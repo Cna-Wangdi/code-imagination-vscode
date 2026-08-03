@@ -29,7 +29,6 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
 - Static analysis cannot always resolve dynamic calls or runtime-generated state.
 - Class-based React state is not supported yet.
 - Very large monorepos still need broader performance testing.
-- The Marketplace publisher identifier will be finalized before public release.
 
 If analysis fails, run **Code Imagination: Show Diagnostic Logs** from the Command Palette. Error details are written to the local Code Imagination output channel without including full source contents.
 

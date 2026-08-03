@@ -3,7 +3,7 @@
   "displayName": "Code Imagination",
   "description": "Visualize functions, React state updates, and UI effects as you type.",
   "version": "0.1.0",
-  "publisher": "local-dev",
+  "publisher": "code-imagination",
   "license": "MIT",
   "preview": true,
   "icon": "media/icon.png",
