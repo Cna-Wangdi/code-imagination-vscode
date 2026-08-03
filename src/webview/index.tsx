@@ -5,6 +5,7 @@ import '@xyflow/react/dist/style.css';
 import './style.css';
 import type { VisualModel, VisualNode, VisualizerSettings } from '../model';
 import { calculateNodePositions, NODE_HEIGHT, NODE_WIDTH } from './graphLayout';
+import { getEdgePresentation } from './graphHighlight';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -13,7 +14,7 @@ const empty: VisualModel = { fileName: '', languageId: '', nodes: [], edges: [],
 const defaultSettings: VisualizerSettings = { followFocus: true, focusAnimationDuration: 350 };
 const colors: Record<VisualNode['kind'], string> = {
   event: '#39c5cf', function: '#58a6ff', state: '#3fb950', setter: '#ffa657', condition: '#d2a8ff',
-  async: '#79c0ff', success: '#56d364', error: '#ff7b72', render: '#f778ba'
+  async: '#79c0ff', success: '#56d364', error: '#ff7b72', catch: '#ffa657', return: '#a5d6ff', render: '#f778ba'
 };
 
 class WebviewErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -94,7 +95,7 @@ function App(): React.ReactElement {
           <Controls showInteractive={false} />
         </ReactFlow>
       </section>}
-    <footer>Click a node to reveal its code.</footer>
+    <footer>Click a node to reveal its code. Expand helper functions only when you need their details.</footer>
   </main>;
 }
 
@@ -128,7 +129,17 @@ function layout(model: VisualModel): RenderedGraph {
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         data: {
-          label: <div className="node-label"><b>{node.label}</b>{node.detail && <small>{node.detail}</small>}</div>,
+          label: <div className="node-label">
+            <b>{node.label}</b>
+            {node.detail && <small>{node.detail}</small>}
+            {node.expandable && <button
+              className="node-action nodrag nopan"
+              onClick={(event) => {
+                event.stopPropagation();
+                vscode.postMessage({ type: 'toggleExpand', nodeId: node.expandId ?? node.id });
+              }}
+            >{node.expanded ? 'Collapse details' : 'Expand details'}</button>}
+          </div>,
           location: node.location,
           nodeColor: colors[node.kind]
         },
@@ -144,8 +155,8 @@ function layout(model: VisualModel): RenderedGraph {
       };
     }),
     edges: model.edges.map((edge) => {
-      const color = edge.animated ? '#58a6ff' : '#8b949e';
-      return { ...edge, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed, color }, style: { stroke: color, strokeWidth: 2 }, labelStyle: { fill: 'var(--vscode-descriptionForeground)', fontSize: 11 } };
+      const presentation = getEdgePresentation(edge);
+      return { ...edge, animated: presentation.animated, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed, color: presentation.color }, style: { stroke: presentation.color, strokeWidth: presentation.strokeWidth }, labelStyle: { fill: 'var(--vscode-descriptionForeground)', fontSize: 11 } };
     })
   };
 }
@@ -166,13 +177,12 @@ function highlightGraph(graph: RenderedGraph, activeNodeId?: string): RenderedGr
       };
     }),
     edges: graph.edges.map((edge) => {
-      const active = edge.source === activeNodeId || edge.target === activeNodeId;
-      const color = active ? '#f0f6fc' : edge.animated ? '#58a6ff' : '#8b949e';
+      const presentation = getEdgePresentation(edge, activeNodeId);
       return {
         ...edge,
-        animated: active || edge.animated,
-        markerEnd: { type: MarkerType.ArrowClosed, color },
-        style: { stroke: color, strokeWidth: active ? 3 : 2 }
+        animated: presentation.animated,
+        markerEnd: { type: MarkerType.ArrowClosed, color: presentation.color },
+        style: { stroke: presentation.color, strokeWidth: presentation.strokeWidth }
       };
     })
   };

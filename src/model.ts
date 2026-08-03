@@ -1,4 +1,4 @@
-export type NodeKind = 'event' | 'function' | 'state' | 'setter' | 'condition' | 'async' | 'success' | 'error' | 'render';
+export type NodeKind = 'event' | 'function' | 'state' | 'setter' | 'condition' | 'async' | 'success' | 'error' | 'catch' | 'return' | 'render';
 
 export interface SourceLocation {
   fileName: string;
@@ -13,6 +13,9 @@ export interface VisualNode {
   label: string;
   detail?: string;
   location?: SourceLocation;
+  expandable?: boolean;
+  expanded?: boolean;
+  expandId?: string;
 }
 
 export interface VisualEdge {
@@ -27,6 +30,7 @@ export interface VisualModel {
   fileName: string;
   languageId: string;
   activeFunction?: string;
+  rootFunctionId?: string;
   activeNodeId?: string;
   nodes: VisualNode[];
   edges: VisualEdge[];

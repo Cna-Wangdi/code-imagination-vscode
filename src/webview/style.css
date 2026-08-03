@@ -21,6 +21,8 @@ footer { padding: 7px 12px; border-top: 1px solid var(--vscode-panel-border); te
 .node-label { display: flex; flex-direction: column; gap: 5px; text-align: left; }
 .node-label b { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .node-label small { white-space: normal; line-height: 1.35; }
+.node-action { align-self: flex-start; padding: 2px 6px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); font: inherit; font-size: 10px; cursor: pointer; }
+.node-action:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .react-flow__controls button { background: var(--vscode-button-secondaryBackground); border-color: var(--vscode-panel-border); fill: var(--vscode-button-secondaryForeground); }
 .react-flow__edge-textbg { fill: var(--vscode-sideBar-background); }
 .react-flow__node.active-node { animation: active-node-pulse 1.25s ease-in-out infinite alternate; }
