@@ -116,6 +116,9 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   private highlightedEditor?: vscode.TextEditor;
   private lastModel?: VisualModel;
   private analysisSequence = 0;
+  private focusedFunction?: { fileName: string; name: string; start: number };
+  private expandedFileName?: string;
+  private readonly expandedFunctionIds = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -137,6 +140,11 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
         void this.updateNow();
       }
       if (message.type === 'reveal' && message.location) this.reveal(message.location as SourceLocation);
+      if (message.type === 'toggleExpand' && typeof message.nodeId === 'string') {
+        if (this.expandedFunctionIds.has(message.nodeId)) this.expandedFunctionIds.delete(message.nodeId);
+        else this.expandedFunctionIds.add(message.nodeId);
+        void this.updateNow();
+      }
     });
   }
 
@@ -188,8 +196,29 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
       } else {
         const text = editor.document.getText();
         const cursorOffset = editor.document.offsetAt(editor.selection.active);
+        const normalizedFileName = normalizeFileName(editor.document.fileName);
+        if (this.expandedFileName !== normalizedFileName) {
+          this.expandedFileName = normalizedFileName;
+          this.expandedFunctionIds.clear();
+        }
         const program = this.projectCache.getProgram(editor.document);
-        model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program);
+        const preferredFunction = this.focusedFunction?.fileName === normalizedFileName
+          ? { name: this.focusedFunction.name, start: this.focusedFunction.start }
+          : undefined;
+        model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program, {
+          preferredFunction,
+          expandedFunctionIds: [...this.expandedFunctionIds]
+        });
+        const rootNode = model.rootFunctionId
+          ? model.nodes.find((node) => node.id === model.rootFunctionId)
+          : undefined;
+        if (model.activeFunction && rootNode?.location) {
+          this.focusedFunction = {
+            fileName: normalizedFileName,
+            name: model.activeFunction,
+            start: rootNode.location.start
+          };
+        }
       }
       this.lastModel = model;
       await this.view.webview.postMessage({ type: 'model', model });
