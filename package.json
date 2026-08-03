@@ -75,6 +75,18 @@
           "minimum": 100,
           "maximum": 2000,
           "description": "Delay in milliseconds before updating the visualization while typing."
+        },
+        "codeImagination.followFocus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically move the diagram viewport when the highlighted node is outside the visible canvas."
+        },
+        "codeImagination.focusAnimationDuration": {
+          "type": "number",
+          "default": 350,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Duration in milliseconds of the viewport animation when following the highlighted node."
         }
       }
     }

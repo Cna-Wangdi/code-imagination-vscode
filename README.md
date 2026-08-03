@@ -10,6 +10,14 @@ Dependency-aware automatic layout arranges event, function, condition, async, st
 
 The extension caches and incrementally rebuilds its TypeScript project model. Cursor-only movement reuses the existing program, while unsaved document edits, source-file changes, and `tsconfig.json` updates invalidate the relevant analysis safely.
 
+## Settings
+
+- `codeImagination.updateDelay` controls the typing debounce.
+- `codeImagination.followFocus` enables or disables automatic viewport movement.
+- `codeImagination.focusAnimationDuration` controls follow-focus animation speed.
+
+The viewport only moves when the active node is outside the visible canvas. An **ANALYZING** indicator appears while a project model is being refreshed.
+
 ## Run locally
 
 1. Install dependencies with `npm install`.

@@ -1,15 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Background, Controls, Edge, MarkerType, Node, Position, ReactFlow, ReactFlowInstance } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './style.css';
-import type { VisualModel, VisualNode } from '../model';
+import type { VisualModel, VisualNode, VisualizerSettings } from '../model';
 import { calculateNodePositions, NODE_HEIGHT, NODE_WIDTH } from './graphLayout';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
 
 const empty: VisualModel = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a React file to begin.' };
+const defaultSettings: VisualizerSettings = { followFocus: true, focusAnimationDuration: 350 };
 const colors: Record<VisualNode['kind'], string> = {
   event: '#39c5cf', function: '#58a6ff', state: '#3fb950', setter: '#ffa657', condition: '#d2a8ff',
   async: '#79c0ff', success: '#56d364', error: '#ff7b72', render: '#f778ba'
@@ -19,6 +20,9 @@ function App(): React.ReactElement {
   const [model, setModel] = useState<VisualModel>(empty);
   const [activeNodeId, setActiveNodeId] = useState<string>();
   const [flow, setFlow] = useState<ReactFlowInstance>();
+  const [settings, setSettings] = useState<VisualizerSettings>(defaultSettings);
+  const [analyzing, setAnalyzing] = useState(false);
+  const canvasRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (event.data?.type === 'model') {
@@ -26,6 +30,8 @@ function App(): React.ReactElement {
         setActiveNodeId(event.data.model.activeNodeId);
       }
       if (event.data?.type === 'activeNode') setActiveNodeId(event.data.nodeId);
+      if (event.data?.type === 'settings') setSettings(event.data.settings);
+      if (event.data?.type === 'analysisStatus') setAnalyzing(Boolean(event.data.analyzing));
     };
     window.addEventListener('message', listener);
     vscode.postMessage({ type: 'ready' });
@@ -33,13 +39,14 @@ function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
-    if (!flow || !activeNodeId) return;
+    if (!flow || !activeNodeId || !settings.followFocus) return;
     const timer = window.setTimeout(() => {
+      if (canvasRef.current && isNodeVisible(activeNodeId, canvasRef.current)) return;
       const activeNode = flow.getNode(activeNodeId);
       if (activeNode) {
         void flow.fitView({
           nodes: [activeNode],
-          duration: 350,
+          duration: settings.focusAnimationDuration,
           padding: 1.1,
           minZoom: 0.65,
           maxZoom: 1.15
@@ -47,17 +54,17 @@ function App(): React.ReactElement {
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [flow, activeNodeId]);
+  }, [flow, activeNodeId, settings]);
 
   const laidOutGraph = useMemo(() => layout(model), [model]);
   const graph = useMemo(() => highlightGraph(laidOutGraph, activeNodeId), [laidOutGraph, activeNodeId]);
   return <main>
     <header>
       <div><strong>{model.activeFunction ? `${model.activeFunction}()` : 'Live mental model'}</strong><span>{model.fileName || 'Code Imagination'}</span></div>
-      <span className="live"><i /> LIVE</span>
+      <span className={`live${analyzing ? ' analyzing' : ''}`}><i /> {analyzing ? 'ANALYZING' : 'LIVE'}</span>
     </header>
     {model.nodes.length === 0 ? <section className="empty"><div className="brain">⌘</div><p>{model.message}</p><small>Try writing a function that calls a React state setter.</small></section> :
-      <section className="canvas">
+      <section className="canvas" ref={canvasRef}>
         <ReactFlow nodes={graph.nodes} edges={graph.edges} onInit={setFlow} fitView fitViewOptions={{ padding: 0.25 }} nodesDraggable={false}
           nodesConnectable={false} elementsSelectable onNodeClick={(_, node) => node.data.location && vscode.postMessage({ type: 'reveal', location: node.data.location })}>
           <Background gap={18} size={1} color="var(--vscode-editorIndentGuide-background)" />
@@ -66,6 +73,19 @@ function App(): React.ReactElement {
       </section>}
     <footer>Click a node to reveal its code.</footer>
   </main>;
+}
+
+function isNodeVisible(nodeId: string, canvas: HTMLElement): boolean {
+  const node = [...canvas.querySelectorAll<HTMLElement>('.react-flow__node')]
+    .find((candidate) => candidate.dataset.id === nodeId);
+  if (!node) return false;
+  const nodeBounds = node.getBoundingClientRect();
+  const canvasBounds = canvas.getBoundingClientRect();
+  const padding = 24;
+  return nodeBounds.left >= canvasBounds.left + padding
+    && nodeBounds.right <= canvasBounds.right - padding
+    && nodeBounds.top >= canvasBounds.top + padding
+    && nodeBounds.bottom <= canvasBounds.bottom - padding;
 }
 
 interface RenderedGraph {

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import ts from 'typescript';
 import { analyzeCode } from './analyzer';
-import type { SourceLocation, VisualModel } from './model';
+import type { SourceLocation, VisualModel, VisualizerSettings } from './model';
 
 interface DocumentSnapshot {
   fileName: string;
@@ -115,6 +115,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   private suppressSelectionUpdatesUntil = 0;
   private highlightedEditor?: vscode.TextEditor;
   private lastModel?: VisualModel;
+  private analysisSequence = 0;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -130,7 +131,10 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((message) => {
-      if (message.type === 'ready') this.updateNow();
+      if (message.type === 'ready') {
+        this.sendSettings();
+        void this.updateNow();
+      }
       if (message.type === 'reveal' && message.location) this.reveal(message.location as SourceLocation);
     });
   }
@@ -141,7 +145,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     const delay = vscode.workspace.getConfiguration('codeImagination').get<number>('updateDelay', 350);
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      this.updateNow();
+      void this.updateNow();
     }, delay);
   }
 
@@ -167,8 +171,13 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     this.scheduleUpdate();
   }
 
-  updateNow(): void {
+  async updateNow(): Promise<void> {
     if (!this.view) return;
+    const sequence = ++this.analysisSequence;
+    await this.view.webview.postMessage({ type: 'analysisStatus', analyzing: true });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (sequence !== this.analysisSequence || !this.view) return;
+
     const editor = vscode.window.activeTextEditor;
     let model: VisualModel;
     if (!editor || !['typescript', 'typescriptreact', 'javascript', 'javascriptreact'].includes(editor.document.languageId)) {
@@ -180,7 +189,19 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
       model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program);
     }
     this.lastModel = model;
-    void this.view.webview.postMessage({ type: 'model', model });
+    await this.view.webview.postMessage({ type: 'model', model });
+    if (sequence === this.analysisSequence) {
+      await this.view.webview.postMessage({ type: 'analysisStatus', analyzing: false });
+    }
+  }
+
+  sendSettings(): void {
+    const configuration = vscode.workspace.getConfiguration('codeImagination');
+    const settings: VisualizerSettings = {
+      followFocus: configuration.get<boolean>('followFocus', true),
+      focusAnimationDuration: configuration.get<number>('focusAnimationDuration', 350)
+    };
+    void this.view?.webview.postMessage({ type: 'settings', settings });
   }
 
   private async reveal(location: SourceLocation): Promise<void> {
@@ -267,6 +288,12 @@ export function activate(context: vscode.ExtensionContext): void {
       if (isSupportedDocument(event.document)) provider.scheduleUpdate();
     }),
     vscode.workspace.onDidCloseTextDocument((document) => projectCache.forgetDocument(document)),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('codeImagination')) {
+        provider.sendSettings();
+        provider.scheduleUpdate();
+      }
+    }),
     vscode.window.onDidChangeActiveTextEditor(() => provider.scheduleUpdate()),
     vscode.window.onDidChangeTextEditorSelection((event) => provider.handleSelection(event.textEditor)),
     vscode.commands.registerCommand('codeImagination.refresh', () => provider.updateNow()),
