@@ -4,6 +4,111 @@ import ts from 'typescript';
 import { analyzeCode } from './analyzer';
 import type { SourceLocation, VisualModel } from './model';
 
+interface DocumentSnapshot {
+  fileName: string;
+  text: string;
+  version: number;
+}
+
+interface ProjectConfiguration {
+  key: string;
+  rootNames: string[];
+  options: ts.CompilerOptions;
+}
+
+class TypeScriptProjectCache {
+  private program?: ts.Program;
+  private programKey?: string;
+  private dirty = true;
+  private readonly documents = new Map<string, DocumentSnapshot>();
+  private readonly configurations = new Map<string, ProjectConfiguration>();
+
+  updateDocument(document: vscode.TextDocument): void {
+    if (!isSupportedDocument(document) || document.uri.scheme !== 'file') return;
+    const key = normalizeFileName(document.fileName);
+    const previous = this.documents.get(key);
+    if (previous?.version === document.version) return;
+    this.documents.set(key, {
+      fileName: path.normalize(document.fileName),
+      text: document.getText(),
+      version: document.version
+    });
+    this.dirty = true;
+  }
+
+  forgetDocument(document: vscode.TextDocument): void {
+    if (this.documents.delete(normalizeFileName(document.fileName))) this.dirty = true;
+  }
+
+  invalidate(clearConfigurations = false): void {
+    this.dirty = true;
+    if (clearConfigurations) this.configurations.clear();
+  }
+
+  getProgram(document: vscode.TextDocument): ts.Program {
+    this.updateDocument(document);
+    const activeFile = path.normalize(document.fileName);
+    const configuration = this.getConfiguration(activeFile);
+    const existingSource = this.program?.getSourceFiles()
+      .some((source) => normalizeFileName(source.fileName) === normalizeFileName(activeFile));
+
+    if (!this.dirty && this.program && this.programKey === configuration.key && existingSource) {
+      return this.program;
+    }
+
+    const rootNames = configuration.rootNames.some((file) => normalizeFileName(file) === normalizeFileName(activeFile))
+      ? configuration.rootNames
+      : [...configuration.rootNames, activeFile];
+    const host = ts.createCompilerHost(configuration.options, true);
+    const originalGetSourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+      const snapshot = this.documents.get(normalizeFileName(fileName));
+      if (snapshot) {
+        return ts.createSourceFile(
+          fileName,
+          snapshot.text,
+          languageVersion,
+          true,
+          scriptKindFor(snapshot.fileName)
+        );
+      }
+      return originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+    };
+
+    this.program = ts.createProgram({
+      rootNames,
+      options: configuration.options,
+      host,
+      oldProgram: this.programKey === configuration.key ? this.program : undefined
+    });
+    this.programKey = configuration.key;
+    this.dirty = false;
+    return this.program;
+  }
+
+  private getConfiguration(activeFile: string): ProjectConfiguration {
+    const configPath = ts.findConfigFile(path.dirname(activeFile), ts.sys.fileExists, 'tsconfig.json');
+    const key = configPath ? normalizeFileName(configPath) : `implicit:${normalizeFileName(path.dirname(activeFile))}`;
+    const cached = this.configurations.get(key);
+    if (cached) return cached;
+
+    let configuration: ProjectConfiguration;
+    if (configPath) {
+      const config = ts.readConfigFile(configPath, ts.sys.readFile);
+      if (!config.error) {
+        const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath));
+        configuration = { key, rootNames: parsed.fileNames, options: parsed.options };
+      } else {
+        configuration = { key, rootNames: [activeFile], options: defaultCompilerOptions() };
+      }
+    } else {
+      configuration = { key, rootNames: [activeFile], options: defaultCompilerOptions() };
+    }
+    this.configurations.set(key, configuration);
+    return configuration;
+  }
+}
+
 class VisualizerProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private timer?: NodeJS.Timeout;
@@ -13,7 +118,8 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly sourceHighlight: vscode.TextEditorDecorationType
+    private readonly sourceHighlight: vscode.TextEditorDecorationType,
+    private readonly projectCache: TypeScriptProjectCache
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -70,7 +176,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     } else {
       const text = editor.document.getText();
       const cursorOffset = editor.document.offsetAt(editor.selection.active);
-      const program = createProjectProgram(editor.document, text);
+      const program = this.projectCache.getProgram(editor.document);
       model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program);
     }
     this.lastModel = model;
@@ -133,13 +239,34 @@ export function activate(context: vscode.ExtensionContext): void {
     overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.findMatchForeground'),
     overviewRulerLane: vscode.OverviewRulerLane.Center
   });
-  const provider = new VisualizerProvider(context.extensionUri, sourceHighlight);
+  const projectCache = new TypeScriptProjectCache();
+  const provider = new VisualizerProvider(context.extensionUri, sourceHighlight, projectCache);
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{ts,tsx,js,jsx}');
+  const configWatcher = vscode.workspace.createFileSystemWatcher('**/tsconfig.json');
+  const refreshFromDisk = () => {
+    projectCache.invalidate();
+    provider.scheduleUpdate();
+  };
+  const refreshConfiguration = () => {
+    projectCache.invalidate(true);
+    provider.scheduleUpdate();
+  };
   context.subscriptions.push(
     sourceHighlight,
+    sourceWatcher,
+    configWatcher,
+    sourceWatcher.onDidCreate(refreshFromDisk),
+    sourceWatcher.onDidChange(refreshFromDisk),
+    sourceWatcher.onDidDelete(refreshFromDisk),
+    configWatcher.onDidCreate(refreshConfiguration),
+    configWatcher.onDidChange(refreshConfiguration),
+    configWatcher.onDidDelete(refreshConfiguration),
     vscode.window.registerWebviewViewProvider('codeImagination.visualizer', provider),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.document === vscode.window.activeTextEditor?.document) provider.scheduleUpdate();
+      projectCache.updateDocument(event.document);
+      if (isSupportedDocument(event.document)) provider.scheduleUpdate();
     }),
+    vscode.workspace.onDidCloseTextDocument((document) => projectCache.forgetDocument(document)),
     vscode.window.onDidChangeActiveTextEditor(() => provider.scheduleUpdate()),
     vscode.window.onDidChangeTextEditorSelection((event) => provider.handleSelection(event.textEditor)),
     vscode.commands.registerCommand('codeImagination.refresh', () => provider.updateNow()),
@@ -149,11 +276,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {}
 
-function createProjectProgram(document: vscode.TextDocument, activeText: string): ts.Program {
-  const activeFile = path.normalize(document.fileName);
-  const configPath = ts.findConfigFile(path.dirname(activeFile), ts.sys.fileExists, 'tsconfig.json');
-  let rootNames = [activeFile];
-  let options: ts.CompilerOptions = {
+function defaultCompilerOptions(): ts.CompilerOptions {
+  return {
     target: ts.ScriptTarget.Latest,
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -162,28 +286,20 @@ function createProjectProgram(document: vscode.TextDocument, activeText: string)
     checkJs: false,
     skipLibCheck: true
   };
+}
 
-  if (configPath) {
-    const config = ts.readConfigFile(configPath, ts.sys.readFile);
-    if (!config.error) {
-      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath));
-      rootNames = parsed.fileNames.includes(activeFile) ? parsed.fileNames : [...parsed.fileNames, activeFile];
-      options = parsed.options;
-    }
-  }
+function scriptKindFor(fileName: string): ts.ScriptKind {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.tsx')) return ts.ScriptKind.TSX;
+  if (lower.endsWith('.jsx')) return ts.ScriptKind.JSX;
+  if (lower.endsWith('.js')) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
 
-  const host = ts.createCompilerHost(options, true);
-  const originalGetSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (path.normalize(fileName).toLowerCase() === activeFile.toLowerCase()) {
-      const kind = activeFile.endsWith('.tsx') ? ts.ScriptKind.TSX
-        : activeFile.endsWith('.jsx') ? ts.ScriptKind.JSX
-        : activeFile.endsWith('.js') ? ts.ScriptKind.JS
-        : ts.ScriptKind.TS;
-      return ts.createSourceFile(fileName, activeText, languageVersion, true, kind);
-    }
-    return originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-  };
+function normalizeFileName(fileName: string): string {
+  return path.normalize(fileName).toLowerCase();
+}
 
-  return ts.createProgram({ rootNames, options, host });
+function isSupportedDocument(document: vscode.TextDocument): boolean {
+  return ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'].includes(document.languageId);
 }

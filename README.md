@@ -6,6 +6,8 @@ The MVP recognizes named and inline JSX event handlers, React `useState` and `us
 
 Moving the source cursor highlights the smallest matching diagram node and its connected edges without disrupting the graph layout.
 
+The extension caches and incrementally rebuilds its TypeScript project model. Cursor-only movement reuses the existing program, while unsaved document edits, source-file changes, and `tsconfig.json` updates invalidate the relevant analysis safely.
+
 ## Run locally
 
 1. Install dependencies with `npm install`.
