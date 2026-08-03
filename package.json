@@ -1,0 +1,96 @@
+{
+  "name": "code-imagination",
+  "displayName": "Code Imagination",
+  "description": "Visualize functions, React state updates, and UI effects as you type.",
+  "version": "0.0.1",
+  "publisher": "local-dev",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:codeImagination.visualizer"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "clean": "node esbuild.mjs --clean",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "check": "tsc --noEmit",
+    "test": "node esbuild.test.mjs && node --test tests/*.test.mjs",
+    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies --allow-missing-repository -o code-imagination-0.0.1.vsix",
+    "vscode:prepublish": "npm run check && npm run build"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeImagination.refresh",
+        "title": "Code Imagination: Refresh Visualization",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codeImagination.openBeside",
+        "title": "Code Imagination: Open Visualization"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeImagination",
+          "title": "Code Imagination",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeImagination": [
+        {
+          "type": "webview",
+          "id": "codeImagination.visualizer",
+          "name": "Live Mental Model",
+          "icon": "media/icon.svg",
+          "contextualTitle": "Code Imagination"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "codeImagination.refresh",
+          "when": "view == codeImagination.visualizer",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Code Imagination",
+      "properties": {
+        "codeImagination.updateDelay": {
+          "type": "number",
+          "default": 350,
+          "minimum": 100,
+          "maximum": 2000,
+          "description": "Delay in milliseconds before updating the visualization while typing."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

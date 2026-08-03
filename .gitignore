@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+.test-dist/
+extension-concept.gif
+make_extension_concept_gif.py

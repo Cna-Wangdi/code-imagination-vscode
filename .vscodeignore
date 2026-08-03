@@ -1,0 +1,17 @@
+.git/**
+.gitignore
+.vscode/**
+src/**
+tests/**
+examples/**
+node_modules/**
+esbuild.mjs
+esbuild.test.mjs
+tsconfig.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+dist/*.map
+dist/analyzer-check.cjs
+.test-dist/**
+make_extension_concept_gif.py
+extension-concept.gif
