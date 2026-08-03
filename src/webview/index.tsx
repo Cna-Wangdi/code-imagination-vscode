@@ -16,6 +16,29 @@ const colors: Record<VisualNode['kind'], string> = {
   async: '#79c0ff', success: '#56d364', error: '#ff7b72', render: '#f778ba'
 };
 
+class WebviewErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    console.error('Code Imagination webview failed', error);
+  }
+
+  render(): React.ReactNode {
+    if (this.state.failed) {
+      return <section className="empty">
+        <div className="brain">!</div>
+        <p>The visualization encountered an unexpected error.</p>
+        <button className="retry" onClick={() => window.location.reload()}>Reload visualization</button>
+      </section>;
+    }
+    return this.props.children;
+  }
+}
+
 function App(): React.ReactElement {
   const [model, setModel] = useState<VisualModel>(empty);
   const [activeNodeId, setActiveNodeId] = useState<string>();
@@ -155,4 +178,4 @@ function highlightGraph(graph: RenderedGraph, activeNodeId?: string): RenderedGr
   };
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<WebviewErrorBoundary><App /></WebviewErrorBoundary>);

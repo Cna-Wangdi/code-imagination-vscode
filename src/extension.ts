@@ -120,7 +120,8 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly sourceHighlight: vscode.TextEditorDecorationType,
-    private readonly projectCache: TypeScriptProjectCache
+    private readonly projectCache: TypeScriptProjectCache,
+    private readonly output: vscode.OutputChannel
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -178,20 +179,40 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     if (sequence !== this.analysisSequence || !this.view) return;
 
+    const startedAt = performance.now();
     const editor = vscode.window.activeTextEditor;
-    let model: VisualModel;
-    if (!editor || !['typescript', 'typescriptreact', 'javascript', 'javascriptreact'].includes(editor.document.languageId)) {
-      model = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a JavaScript, TypeScript, JSX, or TSX file to begin.' };
-    } else {
-      const text = editor.document.getText();
-      const cursorOffset = editor.document.offsetAt(editor.selection.active);
-      const program = this.projectCache.getProgram(editor.document);
-      model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program);
-    }
-    this.lastModel = model;
-    await this.view.webview.postMessage({ type: 'model', model });
-    if (sequence === this.analysisSequence) {
-      await this.view.webview.postMessage({ type: 'analysisStatus', analyzing: false });
+    try {
+      let model: VisualModel;
+      if (!editor || !isSupportedDocument(editor.document)) {
+        model = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a JavaScript, TypeScript, JSX, or TSX file to begin.' };
+      } else {
+        const text = editor.document.getText();
+        const cursorOffset = editor.document.offsetAt(editor.selection.active);
+        const program = this.projectCache.getProgram(editor.document);
+        model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program);
+      }
+      this.lastModel = model;
+      await this.view.webview.postMessage({ type: 'model', model });
+      const duration = Math.round(performance.now() - startedAt);
+      if (duration >= 100) this.output.appendLine(`[analysis] ${model.fileName || 'no active file'} completed in ${duration}ms`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.output.appendLine(`[error] Analysis failed for ${editor?.document.fileName ?? 'unknown file'}: ${message}`);
+      if (stack) this.output.appendLine(stack);
+      const model: VisualModel = {
+        fileName: editor ? path.basename(editor.document.fileName) : '',
+        languageId: editor?.document.languageId ?? '',
+        nodes: [],
+        edges: [],
+        message: 'Analysis failed. Run “Code Imagination: Show Diagnostic Logs” for details.'
+      };
+      this.lastModel = model;
+      await this.view.webview.postMessage({ type: 'model', model });
+    } finally {
+      if (sequence === this.analysisSequence && this.view) {
+        await this.view.webview.postMessage({ type: 'analysisStatus', analyzing: false });
+      }
     }
   }
 
@@ -261,7 +282,9 @@ export function activate(context: vscode.ExtensionContext): void {
     overviewRulerLane: vscode.OverviewRulerLane.Center
   });
   const projectCache = new TypeScriptProjectCache();
-  const provider = new VisualizerProvider(context.extensionUri, sourceHighlight, projectCache);
+  const output = vscode.window.createOutputChannel('Code Imagination', { log: true });
+  output.appendLine('[info] Code Imagination activated');
+  const provider = new VisualizerProvider(context.extensionUri, sourceHighlight, projectCache, output);
   const sourceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{ts,tsx,js,jsx}');
   const configWatcher = vscode.workspace.createFileSystemWatcher('**/tsconfig.json');
   const refreshFromDisk = () => {
@@ -274,6 +297,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   context.subscriptions.push(
     sourceHighlight,
+    output,
     sourceWatcher,
     configWatcher,
     sourceWatcher.onDidCreate(refreshFromDisk),
@@ -297,7 +321,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeActiveTextEditor(() => provider.scheduleUpdate()),
     vscode.window.onDidChangeTextEditorSelection((event) => provider.handleSelection(event.textEditor)),
     vscode.commands.registerCommand('codeImagination.refresh', () => provider.updateNow()),
-    vscode.commands.registerCommand('codeImagination.openBeside', () => vscode.commands.executeCommand('codeImagination.visualizer.focus'))
+    vscode.commands.registerCommand('codeImagination.openBeside', () => vscode.commands.executeCommand('codeImagination.visualizer.focus')),
+    vscode.commands.registerCommand('codeImagination.showLogs', () => output.show(true))
   );
 }
 

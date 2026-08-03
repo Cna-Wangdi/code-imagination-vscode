@@ -15,6 +15,8 @@ header span, footer, .empty small, .node-label small { color: var(--vscode-descr
 .empty { display: flex; padding: 28px; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
 .empty p { max-width: 280px; line-height: 1.5; }
 .brain { display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid var(--vscode-focusBorder); border-radius: 16px; color: var(--vscode-focusBorder); font-size: 24px; }
+.retry { padding: 7px 12px; border: 0; border-radius: 3px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
+.retry:hover { background: var(--vscode-button-hoverBackground); }
 footer { padding: 7px 12px; border-top: 1px solid var(--vscode-panel-border); text-align: center; }
 .node-label { display: flex; flex-direction: column; gap: 5px; text-align: left; }
 .node-label b { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }

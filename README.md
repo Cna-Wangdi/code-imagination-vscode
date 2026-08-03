@@ -2,6 +2,8 @@
 
 Code Imagination is an experimental VS Code extension that turns the function under your cursor into a live visual mental model.
 
+> Preview release: the extension currently focuses on React projects written in JavaScript or TypeScript.
+
 The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, conditions, setter and dispatch calls, awaited operations with success/error paths, imported local functions, and the resulting UI re-render in JavaScript and TypeScript files.
 
 Moving the source cursor highlights the smallest matching diagram node and its connected edges without disrupting the graph layout.
@@ -17,6 +19,19 @@ The extension caches and incrementally rebuilds its TypeScript project model. Cu
 - `codeImagination.focusAnimationDuration` controls follow-focus animation speed.
 
 The viewport only moves when the active node is outside the visible canvas. An **ANALYZING** indicator appears while a project model is being refreshed.
+
+## Privacy
+
+All source analysis runs locally in the VS Code extension host. Code Imagination does not upload code, require an account, or call an AI service.
+
+## Current limitations
+
+- Static analysis cannot always resolve dynamic calls or runtime-generated state.
+- Class-based React state is not supported yet.
+- Very large monorepos still need broader performance testing.
+- The Marketplace publisher identifier will be finalized before public release.
+
+If analysis fails, run **Code Imagination: Show Diagnostic Logs** from the Command Palette. Error details are written to the local Code Imagination output channel without including full source contents.
 
 ## Run locally
 

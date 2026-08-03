@@ -2,9 +2,25 @@
   "name": "code-imagination",
   "displayName": "Code Imagination",
   "description": "Visualize functions, React state updates, and UI effects as you type.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "local-dev",
   "license": "MIT",
+  "preview": true,
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cna-Wangdi/code-imagination-vscode.git"
+  },
+  "homepage": "https://github.com/Cna-Wangdi/code-imagination-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/Cna-Wangdi/code-imagination-vscode/issues"
+  },
+  "keywords": ["visualization", "react", "typescript", "state", "flowchart"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -22,7 +38,7 @@
     "watch": "node esbuild.mjs --watch",
     "check": "tsc --noEmit",
     "test": "node esbuild.test.mjs && node --test tests/*.test.mjs",
-    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies --allow-missing-repository -o code-imagination-0.0.1.vsix",
+    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies -o code-imagination-0.1.0.vsix",
     "vscode:prepublish": "npm run check && npm run build"
   },
   "contributes": {
@@ -35,6 +51,11 @@
       {
         "command": "codeImagination.openBeside",
         "title": "Code Imagination: Open Visualization"
+      },
+      {
+        "command": "codeImagination.showLogs",
+        "title": "Code Imagination: Show Diagnostic Logs",
+        "icon": "$(output)"
       }
     ],
     "viewsContainers": {
@@ -63,6 +84,11 @@
           "command": "codeImagination.refresh",
           "when": "view == codeImagination.visualizer",
           "group": "navigation"
+        },
+        {
+          "command": "codeImagination.showLogs",
+          "when": "view == codeImagination.visualizer",
+          "group": "navigation@2"
         }
       ]
     },

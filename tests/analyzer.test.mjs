@@ -60,3 +60,18 @@ test('models awaited operations with success and error paths', () => {
   assert.ok(model.edges.some((edge) => edge.source === error.id && edge.target.startsWith('setter:setError')));
   assert.ok(model.activeNodeId?.startsWith('async:'));
 });
+
+test('remains useful while code is syntactically incomplete', () => {
+  const text = `
+    function Draft() {
+      const [count, setCount] = useState(0);
+      if (count < ) {
+        setCount(count +
+  `;
+  let model;
+  assert.doesNotThrow(() => {
+    model = analyzeCode(text, 'Draft.tsx', 'typescriptreact', text.length);
+  });
+  assert.ok(model.nodes.some((node) => node.label === 'Draft()'));
+  assert.ok(model.nodes.some((node) => node.label === 'count'));
+});
