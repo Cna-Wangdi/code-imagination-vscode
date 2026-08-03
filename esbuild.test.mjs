@@ -3,9 +3,13 @@ import { mkdir } from 'node:fs/promises';
 
 await mkdir('.test-dist', { recursive: true });
 await esbuild.build({
-  entryPoints: ['src/analyzer.ts'],
+  entryPoints: {
+    analyzer: 'src/analyzer.ts',
+    graphLayout: 'src/webview/graphLayout.ts'
+  },
   bundle: true,
-  outfile: '.test-dist/analyzer.cjs',
+  outdir: '.test-dist',
+  outExtension: { '.js': '.cjs' },
   platform: 'node',
   format: 'cjs',
   target: 'node20'

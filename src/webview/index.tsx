@@ -4,6 +4,7 @@ import { Background, Controls, Edge, MarkerType, Node, Position, ReactFlow, Reac
 import '@xyflow/react/dist/style.css';
 import './style.css';
 import type { VisualModel, VisualNode } from '../model';
+import { calculateNodePositions, NODE_HEIGHT, NODE_WIDTH } from './graphLayout';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -48,7 +49,8 @@ function App(): React.ReactElement {
     return () => window.clearTimeout(timer);
   }, [flow, activeNodeId]);
 
-  const graph = useMemo(() => layout(model, activeNodeId), [model, activeNodeId]);
+  const laidOutGraph = useMemo(() => layout(model), [model]);
+  const graph = useMemo(() => highlightGraph(laidOutGraph, activeNodeId), [laidOutGraph, activeNodeId]);
   return <main>
     <header>
       <div><strong>{model.activeFunction ? `${model.activeFunction}()` : 'Live mental model'}</strong><span>{model.fileName || 'Code Imagination'}</span></div>
@@ -66,44 +68,68 @@ function App(): React.ReactElement {
   </main>;
 }
 
-function layout(model: VisualModel, activeNodeId?: string): { nodes: Node[]; edges: Edge[] } {
-  const rank: Record<VisualNode['kind'], number> = {
-    event: 0, function: 1, condition: 2, async: 3, success: 4, error: 4, setter: 5, state: 6, render: 7
-  };
-  const rows = new Map<number, number>();
+interface RenderedGraph {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+function layout(model: VisualModel): RenderedGraph {
+  const positions = calculateNodePositions(model);
+
   return {
     nodes: model.nodes.map((node) => {
-      const column = rank[node.kind];
-      const count = rows.get(column) ?? 0;
-      rows.set(column, count + 1);
-      const active = node.id === activeNodeId;
+      const point = positions.get(node.id) ?? { x: 0, y: 0 };
       return {
         id: node.id,
-        position: { x: 40 + column * 220, y: 45 + count * 125 },
+        position: point,
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        className: active ? 'active-node' : undefined,
-        data: { label: <div className="node-label"><b>{node.label}</b>{node.detail && <small>{node.detail}</small>}</div>, location: node.location },
+        data: {
+          label: <div className="node-label"><b>{node.label}</b>{node.detail && <small>{node.detail}</small>}</div>,
+          location: node.location,
+          nodeColor: colors[node.kind]
+        },
         style: {
           borderColor: colors[node.kind],
-          borderWidth: active ? 3 : 1,
-          boxShadow: active ? `0 0 18px ${colors[node.kind]}aa` : `0 0 0 1px ${colors[node.kind]}33`,
+          borderWidth: 1,
+          boxShadow: `0 0 0 1px ${colors[node.kind]}33`,
           background: 'var(--vscode-editorWidget-background)',
           color: 'var(--vscode-editor-foreground)',
-          width: 180
+          width: NODE_WIDTH,
+          minHeight: NODE_HEIGHT
         }
       };
     }),
     edges: model.edges.map((edge) => {
+      const color = edge.animated ? '#58a6ff' : '#8b949e';
+      return { ...edge, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed, color }, style: { stroke: color, strokeWidth: 2 }, labelStyle: { fill: 'var(--vscode-descriptionForeground)', fontSize: 11 } };
+    })
+  };
+}
+
+function highlightGraph(graph: RenderedGraph, activeNodeId?: string): RenderedGraph {
+  return {
+    nodes: graph.nodes.map((node) => {
+      const active = node.id === activeNodeId;
+      const nodeColor = String(node.data.nodeColor);
+      return {
+        ...node,
+        className: active ? 'active-node' : undefined,
+        style: {
+          ...node.style,
+          borderWidth: active ? 3 : 1,
+          boxShadow: active ? `0 0 18px ${nodeColor}aa` : `0 0 0 1px ${nodeColor}33`
+        }
+      };
+    }),
+    edges: graph.edges.map((edge) => {
       const active = edge.source === activeNodeId || edge.target === activeNodeId;
       const color = active ? '#f0f6fc' : edge.animated ? '#58a6ff' : '#8b949e';
       return {
         ...edge,
         animated: active || edge.animated,
-        type: 'smoothstep',
         markerEnd: { type: MarkerType.ArrowClosed, color },
-        style: { stroke: color, strokeWidth: active ? 3 : 2 },
-        labelStyle: { fill: 'var(--vscode-descriptionForeground)', fontSize: 11 }
+        style: { stroke: color, strokeWidth: active ? 3 : 2 }
       };
     })
   };

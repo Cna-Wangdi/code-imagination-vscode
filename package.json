@@ -88,6 +88,7 @@
     "esbuild": "^0.24.0"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@xyflow/react": "^12.10.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
