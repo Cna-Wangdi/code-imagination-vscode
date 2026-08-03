@@ -4,6 +4,7 @@
 src/**
 tests/**
 examples/**
+scripts/**
 node_modules/**
 esbuild.mjs
 esbuild.test.mjs

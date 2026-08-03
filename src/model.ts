@@ -32,3 +32,8 @@ export interface VisualModel {
   edges: VisualEdge[];
   message?: string;
 }
+
+export interface VisualizerSettings {
+  followFocus: boolean;
+  focusAnimationDuration: number;
+}

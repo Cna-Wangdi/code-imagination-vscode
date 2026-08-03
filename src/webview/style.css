@@ -9,10 +9,14 @@ header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
 header span, footer, .empty small, .node-label small { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .live { display: flex; align-items: center; gap: 5px; color: var(--vscode-testing-iconPassed); font-size: 10px; }
 .live i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.live.analyzing { color: var(--vscode-progressBar-background); }
+.live.analyzing i { width: 9px; height: 9px; border: 2px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; background: transparent; box-shadow: none; animation: analysis-spin .75s linear infinite; }
 .canvas { min-height: 0; }
 .empty { display: flex; padding: 28px; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
 .empty p { max-width: 280px; line-height: 1.5; }
 .brain { display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid var(--vscode-focusBorder); border-radius: 16px; color: var(--vscode-focusBorder); font-size: 24px; }
+.retry { padding: 7px 12px; border: 0; border-radius: 3px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
+.retry:hover { background: var(--vscode-button-hoverBackground); }
 footer { padding: 7px 12px; border-top: 1px solid var(--vscode-panel-border); text-align: center; }
 .node-label { display: flex; flex-direction: column; gap: 5px; text-align: left; }
 .node-label b { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
@@ -24,3 +28,4 @@ footer { padding: 7px 12px; border-top: 1px solid var(--vscode-panel-border); te
   from { filter: brightness(1); }
   to { filter: brightness(1.35); }
 }
+@keyframes analysis-spin { to { transform: rotate(360deg); } }
