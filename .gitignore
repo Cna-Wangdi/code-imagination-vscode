@@ -5,3 +5,4 @@ dist/
 .test-dist/
 extension-concept.gif
 make_extension_concept_gif.py
+STUDY_GUIDE.md

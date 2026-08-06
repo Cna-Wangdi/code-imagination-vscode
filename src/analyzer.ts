@@ -35,7 +35,8 @@ export interface AnalyzeOptions {
     name: string;
     start: number;
   };
-  expandedFunctionIds?: readonly string[];
+  expandedNodeIds?: readonly string[];
+  entireFile?: boolean;
 }
 
 export function analyzeCode(
@@ -83,6 +84,7 @@ export function analyzeCode(
   };
   const connect = (incoming: readonly FlowEndpoint[], target: string, label?: string) => {
     for (const endpoint of incoming) {
+      if (endpoint.id === target) continue;
       const edgeLabel = endpoint.label ?? label;
       addEdge({
         id: `${endpoint.id}->${target}:${edgeLabel ?? 'flow'}`,
@@ -197,7 +199,7 @@ export function analyzeCode(
     : undefined;
   const focused = activeAtCursor ?? preferred;
 
-  if (!focused) {
+  if (!focused && !options.entireFile) {
     return {
       fileName: baseName(fileName),
       languageId,
@@ -209,7 +211,7 @@ export function analyzeCode(
     };
   }
 
-  const expandedFunctionIds = new Set(options.expandedFunctionIds ?? []);
+  const expandedNodeIds = new Set(options.expandedNodeIds ?? []);
   const renderedFunctions = new Set<string>();
 
   const uniqueEndpoints = (endpoints: readonly FlowEndpoint[]): FlowEndpoint[] => {
@@ -257,14 +259,16 @@ export function analyzeCode(
   };
 
   function renderFunction(fn: FunctionInfo, isRoot = false): void {
-    const expanded = isRoot || expandedFunctionIds.has(fn.id);
+    const expanded = isRoot || expandedNodeIds.has(fn.id);
     const isAsync = hasAsyncModifier(fn.node);
     addNode({
       id: fn.id,
       kind: 'function',
       label: `${fn.name}()`,
       detail: isRoot
-        ? `${isAsync ? 'Async f' : 'F'}unction ${activeAtCursor ? 'under cursor' : 'kept in focus'}`
+        ? options.entireFile
+          ? `${isAsync ? 'Async f' : 'F'}unction in this file`
+          : `${isAsync ? 'Async f' : 'F'}unction ${activeAtCursor ? 'under cursor' : 'kept in focus'}`
         : `${isAsync ? 'Async h' : 'H'}elper function${expanded ? ' · expanded' : ' · collapsed'}`,
       location: location(fn.node),
       expandable: !isRoot,
@@ -303,9 +307,19 @@ export function analyzeCode(
     let flow = [...incoming];
     for (const statement of statements) {
       if (!flow.length) break;
+      flow = mergeFlow(flow, statement);
       flow = analyzeStatement(statement, flow, context, owner);
     }
     return uniqueEndpoints(flow);
+  }
+
+  function mergeFlow(incoming: readonly FlowEndpoint[], at: ts.Node): FlowEndpoint[] {
+    const endpoints = uniqueEndpoints(incoming);
+    if (endpoints.length < 2) return endpoints;
+    const mergeId = `merge:${at.pos}`;
+    addNode({ id: mergeId, kind: 'merge', label: 'Continue', detail: 'Control-flow paths join here', location: location(at) });
+    connect(endpoints, mergeId);
+    return [{ id: mergeId }];
   }
 
   function analyzeBranch(
@@ -375,7 +389,7 @@ export function analyzeCode(
         id: errorId,
         kind: 'error',
         label: shortText(statement.expression, 38) || 'Error',
-        detail: 'Function exits with an error',
+        detail: 'Error propagates to caller',
         location: location(statement)
       });
       connect(throwFlow, errorId, 'throws');
@@ -433,33 +447,46 @@ export function analyzeCode(
     suppressCallNodes = false
   ): FlowEndpoint[] {
     let flow = [...incoming];
-    let actions: FlowEndpoint[] = [];
 
     const visit = (node: ts.Node): void => {
       if (node !== boundary && ts.isFunctionLike(node)) return;
       if (ts.isAwaitExpression(node)) {
-        flow = analyzeAwait(node, flow, context);
-        actions = [];
+        flow = analyzeAwait(node, flow, context, owner);
         return;
       }
       if (ts.isCallExpression(node)) {
         visit(node.expression);
         for (const argument of node.arguments) visit(argument);
-        if (!suppressCallNodes) actions.push(...processCall(node, flow, owner));
+        if (!suppressCallNodes) {
+          const action = processCall(node, flow, owner);
+          if (action.length) flow = action;
+        }
         return;
       }
       ts.forEachChild(node, visit);
     };
 
     visit(boundary);
-    return uniqueEndpoints(actions.length ? actions : flow);
+    return uniqueEndpoints(flow);
   }
 
   function analyzeAwait(
     node: ts.AwaitExpression,
     incoming: readonly FlowEndpoint[],
-    context: FlowContext
+    context: FlowContext,
+    owner: FunctionInfo
   ): FlowEndpoint[] {
+    let awaitIncoming = [...incoming];
+    const awaitedCall = unwrapAwaitedCall(node.expression);
+    if (awaitedCall) {
+      awaitIncoming = analyzeCallInputs(awaitedCall, awaitIncoming, context, owner);
+    }
+    if (awaitedCall && ts.isIdentifier(awaitedCall.expression) && awaitedCall.expression.text === 'fetch') {
+      awaitIncoming = renderRequest(awaitedCall, awaitIncoming);
+    } else if (awaitedCall) {
+      const callFlow = processCall(awaitedCall, awaitIncoming, owner);
+      if (callFlow.length) awaitIncoming = callFlow;
+    }
     const asyncId = `async:${node.pos}`;
     const callLabel = getAwaitLabel(node.expression, node.getSourceFile());
     addNode({
@@ -469,7 +496,7 @@ export function analyzeCode(
       detail: 'Awaited asynchronous operation',
       location: location(node)
     });
-    connect(incoming, asyncId, 'awaits');
+    connect(awaitIncoming, asyncId, 'awaits');
 
     const catchCall = ts.isCallExpression(node.expression)
       && ts.isPropertyAccessExpression(node.expression.expression)
@@ -493,7 +520,7 @@ export function analyzeCode(
           id: errorId,
           kind: 'error',
           label: 'Error',
-          detail: 'Caught and rethrown by .catch()',
+          detail: 'Caught and rethrown; rejection propagates to caller',
           location: handler ? location(handler) : location(node)
         });
         addEdge({ id: `${asyncId}->${errorId}:rethrows`, source: asyncId, target: errorId, label: 'rethrows' });
@@ -524,12 +551,92 @@ export function analyzeCode(
         id: errorId,
         kind: 'error',
         label: 'Error',
-        detail: 'Unhandled rejection path',
+        detail: 'Rejection propagates to caller',
         location: location(node)
       });
       addEdge({ id: `${asyncId}->${errorId}:rejects`, source: asyncId, target: errorId, label: 'rejects' });
     }
     return [{ id: asyncId, label: 'resolves' }];
+  }
+
+  function analyzeCallInputs(
+    call: ts.CallExpression,
+    incoming: readonly FlowEndpoint[],
+    context: FlowContext,
+    owner: FunctionInfo
+  ): FlowEndpoint[] {
+    let flow = analyzeExpression(call.expression, incoming, context, owner);
+    for (const argument of call.arguments) {
+      flow = analyzeExpression(argument, flow, context, owner);
+    }
+    return flow;
+  }
+
+  function renderRequest(call: ts.CallExpression, incoming: readonly FlowEndpoint[]): FlowEndpoint[] {
+    const requestId = `request:${call.pos}`;
+    const optionsArg = call.arguments[1];
+    const methodNode = getObjectProperty(optionsArg, 'method');
+    const method = !methodNode ? 'GET' : ts.isStringLiteralLike(methodNode) ? methodNode.text.toUpperCase() : 'Dynamic';
+    const expanded = expandedNodeIds.has(requestId);
+    let flow = [...incoming];
+
+    if (expanded) {
+      const entries: Array<[string, ts.Node | undefined, string]> = [
+        ['URL', call.arguments[0], shortText(call.arguments[0], 70)]
+      ];
+      if (optionsArg && ts.isObjectLiteralExpression(optionsArg)) {
+        for (const property of optionsArg.properties) {
+          if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
+          const propertyName = property.name.getText(source).replace(/["']/g, '');
+          if (!['method', 'headers', 'body', 'signal'].includes(propertyName)) continue;
+          const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+          const label = capitalize(propertyName);
+          entries.push([label, value, propertyName === 'body' ? summarizeBody(value) : shortText(value, 70)]);
+        }
+      }
+      if (!methodNode) entries.splice(1, 0, ['Method', undefined, 'GET (default)']);
+      for (const [name, valueNode, detail] of entries) {
+        if (!valueNode && name !== 'Method') continue;
+        const configId = `config:${name.toLowerCase()}:${call.pos}`;
+        addNode({ id: configId, kind: 'config', label: name, detail, location: location(valueNode ?? call) });
+        connect(flow, configId, 'sets');
+        flow = [{ id: configId }];
+      }
+    }
+
+    addNode({
+      id: requestId,
+      kind: 'request',
+      label: `${method} request`,
+      detail: shortText(call.arguments[0], 70) || 'Request URL',
+      location: location(call),
+      expandable: true,
+      expanded,
+      expandId: requestId
+    });
+    connect(flow, requestId, expanded ? 'builds' : 'builds request');
+    return [{ id: requestId }];
+  }
+
+  function getObjectProperty(node: ts.Expression | undefined, name: string): ts.Expression | undefined {
+    if (!node || !ts.isObjectLiteralExpression(node)) return undefined;
+    const property = node.properties.find((candidate): candidate is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+      (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+      && candidate.name.getText(source).replace(/["']/g, '') === name
+    );
+    if (!property) return undefined;
+    return ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+  }
+
+  function summarizeBody(node: ts.Expression | undefined): string {
+    if (node && ts.isCallExpression(node) && getCallName(node.expression) === 'stringify') {
+      const value = node.arguments[0];
+      if (value && ts.isObjectLiteralExpression(value)) {
+        const fields = value.properties.map((property) => property.name?.getText(source)).filter(Boolean);
+        if (fields.length) return `JSON fields: ${fields.join(', ')}`;
+      }
+    }
+    return shortText(node, 70);
   }
 
   function processCall(
@@ -554,20 +661,24 @@ export function analyzeCode(
 
     const localTarget = functions.find((candidate) => candidate.name === callee);
     if (localTarget && localTarget.id !== owner.id) {
-      const expanded = expandedFunctionIds.has(localTarget.id);
+      const expanded = expandedNodeIds.has(localTarget.id);
+      const callId = `call:${node.pos}`;
       addNode({
-        id: localTarget.id,
-        kind: 'function',
+        id: callId,
+        kind: 'call',
         label: `${localTarget.name}()`,
-        detail: `${hasAsyncModifier(localTarget.node) ? 'Async h' : 'H'}elper function${expanded ? ' · expanded' : ' · collapsed'}`,
-        location: location(localTarget.node),
+        detail: `Calls ${hasAsyncModifier(localTarget.node) ? 'async ' : ''}helper${expanded ? ' · details expanded' : ''}`,
+        location: location(node),
         expandable: true,
         expanded,
         expandId: localTarget.id
       });
-      connect(incoming, localTarget.id, 'calls');
-      if (expanded) renderFunction(localTarget);
-      return [{ id: localTarget.id }];
+      connect(incoming, callId, 'calls');
+      if (expanded) {
+        renderFunction(localTarget);
+        addEdge({ id: `${callId}->${localTarget.id}:details`, source: callId, target: localTarget.id, label: 'details' });
+      }
+      return [{ id: callId }];
     }
 
     const declaration = resolveCalledDeclaration(node, checker);
@@ -589,7 +700,11 @@ export function analyzeCode(
     return [];
   }
 
-  renderFunction(focused, true);
+  if (options.entireFile) {
+    for (const fn of functions) renderFunction(fn, true);
+  } else if (focused) {
+    renderFunction(focused, true);
+  }
 
   if (calledSetters.size) {
     const renderId = 'render:react';
@@ -611,13 +726,24 @@ export function analyzeCode(
   return {
     fileName: baseName(fileName),
     languageId,
-    activeFunction: focused.name,
-    rootFunctionId: focused.id,
+    activeFunction: options.entireFile ? undefined : focused?.name,
+    rootFunctionId: options.entireFile ? undefined : focused?.id,
     activeNodeId,
+    entireFile: options.entireFile,
     nodes,
     edges,
     message: nodes.length ? undefined : 'Write a React function with state to see its mental model.'
   };
+}
+
+function unwrapAwaitedCall(expression: ts.Expression): ts.CallExpression | undefined {
+  if (!ts.isCallExpression(expression)) return undefined;
+  if (ts.isPropertyAccessExpression(expression.expression)
+    && expression.expression.name.text === 'catch'
+    && ts.isCallExpression(expression.expression.expression)) {
+    return expression.expression.expression;
+  }
+  return expression;
 }
 
 function resolveCalledDeclaration(call: ts.CallExpression, checker?: ts.TypeChecker): ts.Declaration | undefined {

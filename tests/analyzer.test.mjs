@@ -94,6 +94,16 @@ test('does not expand a whole file when no function has focus', () => {
   assert.match(model.message ?? '', /cursor inside a function/i);
 });
 
+test('renders every function when entire-file mode is requested', () => {
+  const text = `function one() { return 1; }\nfunction two() { return 2; }`;
+  const model = analyzeCode(text, 'overview.ts', 'typescript', 0, undefined, { entireFile: true });
+  assert.equal(model.entireFile, true);
+  assert.equal(model.activeFunction, undefined);
+  assert.ok(model.nodes.some((node) => node.label === 'one()'));
+  assert.ok(model.nodes.some((node) => node.label === 'two()'));
+  assert.equal(model.nodes.filter((node) => node.kind === 'return').length, 2);
+});
+
 test('treats a catch fallback as handled instead of unhandled', () => {
   const text = `
     async function read(response) {
@@ -103,7 +113,7 @@ test('treats a catch fallback as handled instead of unhandled', () => {
   `;
   const model = analyzeCode(text, 'handled.ts', 'typescript', text.indexOf('await response'));
   assert.ok(model.nodes.some((node) => node.kind === 'success' && node.label === 'Fallback'));
-  assert.ok(!model.nodes.some((node) => node.detail === 'Unhandled rejection path'));
+  assert.ok(!model.nodes.some((node) => node.detail?.includes('propagates to caller')));
   assert.ok(model.edges.some((edge) => edge.label === 'caught'));
 });
 
@@ -116,8 +126,7 @@ test('distinguishes a catch handler that rethrows', () => {
     }
   `;
   const model = analyzeCode(text, 'rethrow.ts', 'typescript', text.indexOf('await response'));
-  assert.ok(model.nodes.some((node) => node.kind === 'error' && node.detail === 'Caught and rethrown by .catch()'));
-  assert.ok(!model.nodes.some((node) => node.detail === 'Unhandled rejection path'));
+  assert.ok(model.nodes.some((node) => node.kind === 'error' && node.detail === 'Caught and rethrown; rejection propagates to caller'));
   assert.ok(model.edges.some((edge) => edge.label === 'rethrows'));
 });
 
@@ -155,10 +164,124 @@ test('keeps helper functions collapsed until explicitly expanded', () => {
   assert.ok(!collapsed.nodes.some((node) => node.kind === 'condition'));
 
   const expanded = analyzeCode(text, 'helpers.ts', 'typescript', cursor, undefined, {
-    expandedFunctionIds: [helper.expandId]
+    expandedNodeIds: [helper.expandId]
   });
   assert.equal(expanded.nodes.find((node) => node.id === helper.id)?.expanded, true);
   assert.ok(expanded.nodes.some((node) => node.kind === 'condition'));
+});
+
+test('preserves call-site execution order', () => {
+  const text = `
+    function first() { return 1; }
+    function second(value) { return value + 1; }
+    function run() {
+      const value = first();
+      return second(value);
+    }
+  `;
+  const model = analyzeCode(text, 'order.ts', 'typescript', text.indexOf('const value'));
+  const first = model.nodes.find((node) => node.kind === 'call' && node.label === 'first()');
+  const second = model.nodes.find((node) => node.kind === 'call' && node.label === 'second()');
+  assert.ok(first && second);
+  assert.ok(model.edges.some((edge) => edge.source === first.id && edge.target === second.id));
+});
+
+test('joins branch paths before the next statement', () => {
+  const text = `
+    function first() {}
+    function second() {}
+    function finish() {}
+    function run(flag) {
+      if (flag) first(); else second();
+      finish();
+    }
+  `;
+  const model = analyzeCode(text, 'merge.ts', 'typescript', text.indexOf('if (flag)'));
+  const merge = model.nodes.find((node) => node.kind === 'merge');
+  const finish = model.nodes.find((node) => node.kind === 'call' && node.label === 'finish()');
+  assert.ok(merge && finish);
+  assert.equal(model.edges.filter((edge) => edge.target === merge.id).length, 2);
+  assert.ok(model.edges.some((edge) => edge.source === merge.id && edge.target === finish.id));
+});
+
+test('summarizes and expands fetch request configuration', () => {
+  const text = `
+    async function send(snapshot, signal) {
+      return await fetch(\`/api/insights\`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshot, signal }),
+        signal
+      });
+    }
+  `;
+  const cursor = text.indexOf('await fetch');
+  const collapsed = analyzeCode(text, 'request.ts', 'typescript', cursor);
+  const request = collapsed.nodes.find((node) => node.kind === 'request');
+  assert.equal(request?.label, 'POST request');
+  assert.equal(request?.expanded, false);
+  assert.equal(collapsed.nodes.filter((node) => node.kind === 'config').length, 0);
+
+  const expanded = analyzeCode(text, 'request.ts', 'typescript', cursor, undefined, {
+    expandedNodeIds: [request.expandId]
+  });
+  assert.deepEqual(
+    expanded.nodes.filter((node) => node.kind === 'config').map((node) => node.label),
+    ['URL', 'Method', 'Headers', 'Body', 'Signal']
+  );
+  assert.match(expanded.nodes.find((node) => node.label === 'Body')?.detail ?? '', /JSON fields: snapshot, signal/);
+});
+
+test('preserves calls nested inside awaited call arguments', () => {
+  const text = `
+    function prepare() { return 'ready'; }
+    async function save(value) { return value; }
+    async function run() {
+      return await save(prepare());
+    }
+  `;
+  const model = analyzeCode(text, 'await-order.ts', 'typescript', text.indexOf('await save'));
+  const prepare = model.nodes.find((node) => node.kind === 'call' && node.label === 'prepare()');
+  const save = model.nodes.find((node) => node.kind === 'call' && node.label === 'save()');
+  const awaited = model.nodes.find((node) => node.kind === 'async');
+  assert.ok(prepare && save && awaited);
+  assert.ok(model.edges.some((edge) => edge.source === prepare.id && edge.target === save.id));
+  assert.ok(model.edges.some((edge) => edge.source === save.id && edge.target === awaited.id));
+});
+
+test('does not claim a dynamic request method is GET', () => {
+  const text = `
+    async function send(url, request) {
+      return await fetch(url, { method: request.method });
+    }
+  `;
+  const model = analyzeCode(text, 'dynamic-method.ts', 'typescript', text.indexOf('await fetch'));
+  const request = model.nodes.find((node) => node.kind === 'request');
+  assert.equal(request?.label, 'Dynamic request');
+  assert.notEqual(request?.label, 'GET request');
+});
+
+test('keeps expanded request properties in source order', () => {
+  const text = `
+    async function send(url, signal) {
+      return await fetch(url, {
+        signal,
+        body: JSON.stringify({ ok: true }),
+        headers: { Accept: 'application/json' },
+        method: 'POST'
+      });
+    }
+  `;
+  const cursor = text.indexOf('await fetch');
+  const collapsed = analyzeCode(text, 'request-order.ts', 'typescript', cursor);
+  const request = collapsed.nodes.find((node) => node.kind === 'request');
+  const expanded = analyzeCode(text, 'request-order.ts', 'typescript', cursor, undefined, {
+    expandedNodeIds: [request.expandId]
+  });
+  assert.deepEqual(
+    expanded.nodes.filter((node) => node.kind === 'config').map((node) => node.label),
+    ['URL', 'Signal', 'Body', 'Headers', 'Method']
+  );
 });
 
 test('remains useful while code is syntactically incomplete', () => {

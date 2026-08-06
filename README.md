@@ -4,11 +4,11 @@ Code Imagination is an experimental VS Code extension that turns the function un
 
 > Preview release: the extension currently focuses on React projects written in JavaScript or TypeScript.
 
-The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, true/false branches, early returns, setter and dispatch calls, handled and rethrown asynchronous errors, imported local functions, and the resulting UI re-render in JavaScript and TypeScript files.
+The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, true/false branches, branch joins, early returns, ordered call sites, setter and dispatch calls, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, and the resulting UI re-render in JavaScript and TypeScript files.
 
 Moving the source cursor highlights the smallest matching diagram node and animates only its connected edges without disrupting the graph layout. When the cursor leaves a function, the last focused function remains visible instead of expanding the whole file.
 
-Dependency-aware automatic layout arranges event, function, condition, async, state, and render nodes from left to right. Branches are separated automatically, cursor-only highlighting does not recompute node positions, and called helper functions remain collapsed until their **Expand details** control is selected.
+Dependency-aware automatic layout arranges event, function, condition, request, async, state, and render nodes from left to right. Branches are separated and visibly rejoin before subsequent statements. Called helpers and HTTP request details remain collapsed until their **Expand details** control is selected.
 
 The extension caches and incrementally rebuilds its TypeScript project model. Cursor-only movement reuses the existing program, while unsaved document edits, source-file changes, and `tsconfig.json` updates invalidate the relevant analysis safely.
 
@@ -27,6 +27,7 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
 ## Current limitations
 
 - Static analysis cannot always resolve dynamic calls or runtime-generated state.
+- Request configuration shows source expressions; values computed only at runtime cannot be predicted.
 - Class-based React state is not supported yet.
 - Very large monorepos still need broader performance testing.
 
