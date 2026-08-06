@@ -16,3 +16,4 @@ dist/analyzer-check.cjs
 .test-dist/**
 make_extension_concept_gif.py
 extension-concept.gif
+STUDY_GUIDE.md

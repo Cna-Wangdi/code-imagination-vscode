@@ -4,7 +4,7 @@ Code Imagination is an experimental VS Code extension that turns the function un
 
 > Preview release: the extension currently focuses on React projects written in JavaScript or TypeScript.
 
-The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, true/false branches, branch joins, early returns, ordered call sites, setter and dispatch calls, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, and the resulting UI re-render in JavaScript and TypeScript files.
+The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, true/false branches, branch joins, early returns, ordered call sites, setter and dispatch calls, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, on-demand project-wide function usages, and the resulting UI re-render in JavaScript and TypeScript files.
 
 Moving the source cursor highlights the smallest matching diagram node and animates only its connected edges without disrupting the graph layout. When the cursor leaves a function, the last focused function remains visible instead of expanding the whole file.
 
@@ -39,7 +39,7 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
   - visualize template events such as `(click)="increment()"`;
   - understand Angular signals and `.set()` / `.update()` state changes;
   - show Angular change detection and the resulting UI update.
-- [ ] Add an on-demand **Used by** view for functions:
+- [x] Add an on-demand **Used by** view for JavaScript and TypeScript functions:
   - find call sites across the current project;
   - show each usage with its file and line number;
   - open and highlight the selected usage without replacing the current graph;

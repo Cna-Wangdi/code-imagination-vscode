@@ -1,4 +1,4 @@
-export type NodeKind = 'event' | 'function' | 'call' | 'request' | 'config' | 'merge' | 'state' | 'setter' | 'condition' | 'async' | 'success' | 'error' | 'catch' | 'return' | 'render';
+export type NodeKind = 'event' | 'function' | 'call' | 'usage' | 'request' | 'config' | 'merge' | 'state' | 'setter' | 'condition' | 'async' | 'success' | 'error' | 'catch' | 'return' | 'render';
 
 export interface SourceLocation {
   fileName: string;
@@ -16,6 +16,8 @@ export interface VisualNode {
   expandable?: boolean;
   expanded?: boolean;
   expandId?: string;
+  usageTargetId?: string;
+  usagesExpanded?: boolean;
 }
 
 export interface VisualEdge {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 — Private test
+
 - Keep the last function focused when the cursor moves outside a function.
 - Animate only edges connected to the highlighted node.
 - Model true/false branches, early returns, handled `.catch()` fallbacks, and rethrown errors more accurately.
@@ -11,6 +13,7 @@
 - Summarize `fetch` method and URL, with expandable headers, body fields, and abort signal.
 - Describe rejected promises as handled, rethrown, or propagated to the caller instead of assuming they are unhandled.
 - Add entire-file visualization and a fit-graph viewport control.
+- Add an on-demand **Show usages** view with cross-file call sites and click-to-highlight navigation.
 
 ## 0.1.0 — Preview
 

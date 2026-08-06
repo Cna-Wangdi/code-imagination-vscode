@@ -36,6 +36,7 @@ export interface AnalyzeOptions {
     start: number;
   };
   expandedNodeIds?: readonly string[];
+  expandedUsages?: readonly { targetId: string; sourceId: string }[];
   entireFile?: boolean;
 }
 
@@ -212,6 +213,7 @@ export function analyzeCode(
   }
 
   const expandedNodeIds = new Set(options.expandedNodeIds ?? []);
+  const expandedUsages = new Map((options.expandedUsages ?? []).map((item) => [item.targetId, item.sourceId]));
   const renderedFunctions = new Set<string>();
 
   const uniqueEndpoints = (endpoints: readonly FlowEndpoint[]): FlowEndpoint[] => {
@@ -273,7 +275,9 @@ export function analyzeCode(
       location: location(fn.node),
       expandable: !isRoot,
       expanded: !isRoot ? expanded : undefined,
-      expandId: !isRoot ? fn.id : undefined
+      expandId: !isRoot ? fn.id : undefined,
+      usageTargetId: fn.id,
+      usagesExpanded: expandedUsages.has(fn.id)
     });
 
     for (const binding of eventBindings.filter((candidate) => candidate.functionId === fn.id)) {
@@ -671,7 +675,9 @@ export function analyzeCode(
         location: location(node),
         expandable: true,
         expanded,
-        expandId: localTarget.id
+        expandId: localTarget.id,
+        usageTargetId: localTarget.id,
+        usagesExpanded: expandedUsages.has(localTarget.id)
       });
       connect(incoming, callId, 'calls');
       if (expanded) {
@@ -691,7 +697,9 @@ export function analyzeCode(
           kind: 'function',
           label: `${callee}()`,
           detail: `Defined in ${baseName(targetSource.fileName)}`,
-          location: location(declaration)
+          location: location(declaration),
+          usageTargetId: targetId,
+          usagesExpanded: expandedUsages.has(targetId)
         });
         connect(incoming, targetId, 'calls');
         return [{ id: targetId }];
@@ -704,6 +712,19 @@ export function analyzeCode(
     for (const fn of functions) renderFunction(fn, true);
   } else if (focused) {
     renderFunction(focused, true);
+  }
+
+  for (const [targetId, sourceId] of expandedUsages) {
+    const target = functions.find((candidate) => candidate.id === targetId);
+    if (target) renderUsages(target.node, target.name, sourceId, targetId);
+    else {
+      const targetNode = nodes.find((candidate) => candidate.id === targetId);
+      if (targetNode?.location && program) {
+        const targetSource = program.getSourceFiles().find((candidate) => normalizePath(candidate.fileName) === normalizePath(targetNode.location!.fileName));
+        const declaration = targetSource && findCallableAt(targetSource, targetNode.location.start);
+        if (declaration) renderUsages(declaration, targetNode.label.replace(/\(\)$/, ''), sourceId, targetId);
+      }
+    }
   }
 
   if (calledSetters.size) {
@@ -734,6 +755,41 @@ export function analyzeCode(
     edges,
     message: nodes.length ? undefined : 'Write a React function with state to see its mental model.'
   };
+
+  function renderUsages(target: ts.Node, name: string, sourceId: string, targetId: string): void {
+    const sourceFiles = (program?.getSourceFiles() ?? [source])
+      .filter((candidate): candidate is ts.SourceFile => Boolean(candidate));
+    let count = 0;
+    for (const candidateSource of sourceFiles) {
+      if (candidateSource.isDeclarationFile) continue;
+      const visit = (candidate: ts.Node): void => {
+        if (ts.isCallExpression(candidate)) {
+          const declaration = resolveCalledDeclaration(candidate, checker);
+          if ((declaration && sameCallable(declaration, target))
+            || (!checker && getCallName(candidate.expression) === name)) {
+            const usageId = `usage:${targetId}:${normalizePath(candidateSource.fileName)}:${candidate.pos}`;
+            const usageLocation = location(candidate);
+            addNode({
+              id: usageId,
+              kind: 'usage',
+              label: `${baseName(candidateSource.fileName)}:${usageLocation.line + 1}`,
+              detail: shortText(candidate, 70) || `${name}() call`,
+              location: usageLocation
+            });
+            addEdge({ id: `${sourceId}->${usageId}:used-by`, source: sourceId, target: usageId, label: 'used by' });
+            count += 1;
+          }
+        }
+        ts.forEachChild(candidate, visit);
+      };
+      visit(candidateSource);
+    }
+    if (!count) {
+      const emptyId = `usage:none:${targetId}`;
+      addNode({ id: emptyId, kind: 'usage', label: 'No usages found', detail: 'No project call sites were resolved.' });
+      addEdge({ id: `${sourceId}->${emptyId}:used-by`, source: sourceId, target: emptyId, label: 'used by' });
+    }
+  }
 }
 
 function unwrapAwaitedCall(expression: ts.Expression): ts.CallExpression | undefined {
@@ -744,6 +800,34 @@ function unwrapAwaitedCall(expression: ts.Expression): ts.CallExpression | undef
     return expression.expression.expression;
   }
   return expression;
+}
+
+function sameCallable(declaration: ts.Node, target: ts.Node): boolean {
+  const canonical = canonicalCallable(declaration);
+  const canonicalTarget = canonicalCallable(target);
+  return normalizePath(canonical.getSourceFile().fileName) === normalizePath(canonicalTarget.getSourceFile().fileName)
+    && canonical.getStart(canonical.getSourceFile()) === canonicalTarget.getStart(canonicalTarget.getSourceFile());
+}
+
+function canonicalCallable(node: ts.Node): ts.Node {
+  if (ts.isVariableDeclaration(node)
+    && node.initializer
+    && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+    return node.initializer;
+  }
+  return node;
+}
+
+function findCallableAt(source: ts.SourceFile, offset: number): ts.Node | undefined {
+  let result: ts.Node | undefined;
+  const visit = (node: ts.Node): void => {
+    if (offset < node.getStart(source) || offset >= node.getEnd()) return;
+    if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isVariableDeclaration(node)
+      || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) result = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return result;
 }
 
 function resolveCalledDeclaration(call: ts.CallExpression, checker?: ts.TypeChecker): ts.Declaration | undefined {

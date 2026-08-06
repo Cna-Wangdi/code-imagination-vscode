@@ -13,7 +13,7 @@ const vscode = acquireVsCodeApi();
 const empty: VisualModel = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a React file to begin.' };
 const defaultSettings: VisualizerSettings = { followFocus: true, focusAnimationDuration: 350 };
 const colors: Record<VisualNode['kind'], string> = {
-  event: '#39c5cf', function: '#58a6ff', call: '#79c0ff', request: '#39c5cf', config: '#ffa657', merge: '#8b949e',
+  event: '#39c5cf', function: '#58a6ff', call: '#79c0ff', usage: '#bc8cff', request: '#39c5cf', config: '#ffa657', merge: '#8b949e',
   state: '#3fb950', setter: '#ffa657', condition: '#d2a8ff', async: '#79c0ff', success: '#56d364',
   error: '#ff7b72', catch: '#ffa657', return: '#a5d6ff', render: '#f778ba'
 };
@@ -160,6 +160,13 @@ function layout(model: VisualModel): RenderedGraph {
                 vscode.postMessage({ type: 'toggleExpand', nodeId: node.expandId ?? node.id });
               }}
             >{node.expanded ? 'Collapse details' : 'Expand details'}</button>}
+            {node.usageTargetId && <button
+              className="node-action nodrag nopan"
+              onClick={(event) => {
+                event.stopPropagation();
+                vscode.postMessage({ type: 'toggleUsages', targetId: node.usageTargetId, sourceId: node.id });
+              }}
+            >{node.usagesExpanded ? 'Hide usages' : 'Show usages'}</button>}
           </div>,
           location: node.location,
           nodeColor: colors[node.kind]
