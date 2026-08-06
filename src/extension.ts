@@ -120,6 +120,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   private expandedFileName?: string;
   private entireFile = false;
   private readonly expandedNodeIds = new Set<string>();
+  private readonly expandedUsages = new Map<string, string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -148,6 +149,13 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
       }
       if (message.type === 'toggleEntireFile') {
         this.entireFile = !this.entireFile;
+        void this.updateNow();
+      }
+      if (message.type === 'toggleUsages'
+        && typeof message.targetId === 'string'
+        && typeof message.sourceId === 'string') {
+        if (this.expandedUsages.has(message.targetId)) this.expandedUsages.delete(message.targetId);
+        else this.expandedUsages.set(message.targetId, message.sourceId);
         void this.updateNow();
       }
     });
@@ -205,6 +213,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
         if (this.expandedFileName !== normalizedFileName) {
           this.expandedFileName = normalizedFileName;
           this.expandedNodeIds.clear();
+          this.expandedUsages.clear();
         }
         const program = this.projectCache.getProgram(editor.document);
         const preferredFunction = this.focusedFunction?.fileName === normalizedFileName
@@ -213,6 +222,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
         model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program, {
           preferredFunction,
           expandedNodeIds: [...this.expandedNodeIds],
+          expandedUsages: [...this.expandedUsages].map(([targetId, sourceId]) => ({ targetId, sourceId })),
           entireFile: this.entireFile
         });
         const rootNode = model.rootFunctionId

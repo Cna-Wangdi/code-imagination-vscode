@@ -284,6 +284,63 @@ test('keeps expanded request properties in source order', () => {
   );
 });
 
+test('discovers function usages only when requested', () => {
+  const text = `
+    function format(value) { return String(value); }
+    function first() { return format(1); }
+    function second() { return format(2); }
+  `;
+  const cursor = text.indexOf('function format');
+  const collapsed = analyzeCode(text, 'usages.ts', 'typescript', cursor);
+  const target = collapsed.nodes.find((node) => node.id === collapsed.rootFunctionId);
+  assert.ok(target?.usageTargetId);
+  assert.equal(target.usagesExpanded, false);
+  assert.equal(collapsed.nodes.filter((node) => node.kind === 'usage').length, 0);
+
+  const expanded = analyzeCode(text, 'usages.ts', 'typescript', cursor, undefined, {
+    expandedUsages: [{ targetId: target.usageTargetId, sourceId: target.id }]
+  });
+  const usages = expanded.nodes.filter((node) => node.kind === 'usage');
+  assert.equal(usages.length, 2);
+  assert.ok(usages.every((node) => node.label.startsWith('usages.ts:')));
+  assert.equal(expanded.edges.filter((edge) => edge.source === target.id && edge.label === 'used by').length, 2);
+});
+
+test('shows an explicit empty result when a function has no usages', () => {
+  const text = `function unused() { return true; }`;
+  const cursor = text.indexOf('function unused');
+  const collapsed = analyzeCode(text, 'unused.ts', 'typescript', cursor);
+  const target = collapsed.nodes.find((node) => node.id === collapsed.rootFunctionId);
+  const expanded = analyzeCode(text, 'unused.ts', 'typescript', cursor, undefined, {
+    expandedUsages: [{ targetId: target.usageTargetId, sourceId: target.id }]
+  });
+  assert.ok(expanded.nodes.some((node) => node.kind === 'usage' && node.label === 'No usages found'));
+});
+
+test('discovers imported usages across project files', () => {
+  const targetFile = path.resolve('examples', 'counterMath.ts');
+  const callerFile = path.resolve('examples', 'Counter.tsx');
+  const program = ts.createProgram([targetFile, callerFile], {
+    target: ts.ScriptTarget.Latest,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    jsx: ts.JsxEmit.ReactJSX,
+    skipLibCheck: true
+  });
+  const source = program.getSourceFile(targetFile);
+  assert.ok(source);
+  const text = source.getFullText();
+  const cursor = text.indexOf('function nextCount');
+  const collapsed = analyzeCode(text, targetFile, 'typescript', cursor, program);
+  const target = collapsed.nodes.find((node) => node.id === collapsed.rootFunctionId);
+  const expanded = analyzeCode(text, targetFile, 'typescript', cursor, program, {
+    expandedUsages: [{ targetId: target.usageTargetId, sourceId: target.id }]
+  });
+  assert.ok(expanded.nodes.some((node) => node.kind === 'usage'
+    && node.location?.fileName.endsWith('Counter.tsx')
+    && node.detail?.includes('nextCount(count)')));
+});
+
 test('remains useful while code is syntactically incomplete', () => {
   const text = `
     function Draft() {
