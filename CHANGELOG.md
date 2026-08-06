@@ -7,6 +7,10 @@
 - Model true/false branches, early returns, handled `.catch()` fallbacks, and rethrown errors more accurately.
 - Collapse called helper functions by default with an on-demand expansion control.
 - Reduce duplicate generic success/error nodes in asynchronous flows.
+- Preserve source-order call sequencing and show where branch paths rejoin.
+- Summarize `fetch` method and URL, with expandable headers, body fields, and abort signal.
+- Describe rejected promises as handled, rethrown, or propagated to the caller instead of assuming they are unhandled.
+- Add entire-file visualization and a fit-graph viewport control.
 
 ## 0.1.0 — Preview
 

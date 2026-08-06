@@ -13,8 +13,9 @@ const vscode = acquireVsCodeApi();
 const empty: VisualModel = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a React file to begin.' };
 const defaultSettings: VisualizerSettings = { followFocus: true, focusAnimationDuration: 350 };
 const colors: Record<VisualNode['kind'], string> = {
-  event: '#39c5cf', function: '#58a6ff', state: '#3fb950', setter: '#ffa657', condition: '#d2a8ff',
-  async: '#79c0ff', success: '#56d364', error: '#ff7b72', catch: '#ffa657', return: '#a5d6ff', render: '#f778ba'
+  event: '#39c5cf', function: '#58a6ff', call: '#79c0ff', request: '#39c5cf', config: '#ffa657', merge: '#8b949e',
+  state: '#3fb950', setter: '#ffa657', condition: '#d2a8ff', async: '#79c0ff', success: '#56d364',
+  error: '#ff7b72', catch: '#ffa657', return: '#a5d6ff', render: '#f778ba'
 };
 
 class WebviewErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -82,10 +83,30 @@ function App(): React.ReactElement {
 
   const laidOutGraph = useMemo(() => layout(model), [model]);
   const graph = useMemo(() => highlightGraph(laidOutGraph, activeNodeId), [laidOutGraph, activeNodeId]);
+  const fitGraph = () => {
+    if (!flow || graph.nodes.length === 0) return;
+    void flow.fitView({
+      nodes: graph.nodes,
+      duration: settings.focusAnimationDuration,
+      padding: 0.25,
+      minZoom: 0.1,
+      maxZoom: 1.15
+    });
+  };
   return <main>
     <header>
-      <div><strong>{model.activeFunction ? `${model.activeFunction}()` : 'Live mental model'}</strong><span>{model.fileName || 'Code Imagination'}</span></div>
-      <span className={`live${analyzing ? ' analyzing' : ''}`}><i /> {analyzing ? 'ANALYZING' : 'LIVE'}</span>
+      <div><strong>{model.entireFile ? 'Entire file' : model.activeFunction ? `${model.activeFunction}()` : 'Live mental model'}</strong><span>{model.fileName || 'Code Imagination'}</span></div>
+      <div className="header-actions">
+        <div className="graph-actions">
+          <button className={`overview-toggle${model.entireFile ? ' active' : ''}`} onClick={() => vscode.postMessage({ type: 'toggleEntireFile' })}>
+            {model.entireFile ? 'Focus function' : 'Show entire file'}
+          </button>
+          <button className="overview-toggle" onClick={fitGraph} disabled={!flow || graph.nodes.length === 0}>
+            Fit graph
+          </button>
+        </div>
+        <span className={`live${analyzing ? ' analyzing' : ''}`}><i /> {analyzing ? 'ANALYZING' : 'LIVE'}</span>
+      </div>
     </header>
     {model.nodes.length === 0 ? <section className="empty"><div className="brain">⌘</div><p>{model.message}</p><small>Try writing a function that calls a React state setter.</small></section> :
       <section className="canvas" ref={canvasRef}>
@@ -95,7 +116,7 @@ function App(): React.ReactElement {
           <Controls showInteractive={false} />
         </ReactFlow>
       </section>}
-    <footer>Click a node to reveal its code. Expand helper functions only when you need their details.</footer>
+    <footer>Click a node to reveal its code. Use “Fit graph” to bring every node into view.</footer>
   </main>;
 }
 

@@ -118,7 +118,8 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   private analysisSequence = 0;
   private focusedFunction?: { fileName: string; name: string; start: number };
   private expandedFileName?: string;
-  private readonly expandedFunctionIds = new Set<string>();
+  private entireFile = false;
+  private readonly expandedNodeIds = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -141,8 +142,12 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
       }
       if (message.type === 'reveal' && message.location) this.reveal(message.location as SourceLocation);
       if (message.type === 'toggleExpand' && typeof message.nodeId === 'string') {
-        if (this.expandedFunctionIds.has(message.nodeId)) this.expandedFunctionIds.delete(message.nodeId);
-        else this.expandedFunctionIds.add(message.nodeId);
+        if (this.expandedNodeIds.has(message.nodeId)) this.expandedNodeIds.delete(message.nodeId);
+        else this.expandedNodeIds.add(message.nodeId);
+        void this.updateNow();
+      }
+      if (message.type === 'toggleEntireFile') {
+        this.entireFile = !this.entireFile;
         void this.updateNow();
       }
     });
@@ -199,7 +204,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
         const normalizedFileName = normalizeFileName(editor.document.fileName);
         if (this.expandedFileName !== normalizedFileName) {
           this.expandedFileName = normalizedFileName;
-          this.expandedFunctionIds.clear();
+          this.expandedNodeIds.clear();
         }
         const program = this.projectCache.getProgram(editor.document);
         const preferredFunction = this.focusedFunction?.fileName === normalizedFileName
@@ -207,7 +212,8 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
           : undefined;
         model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program, {
           preferredFunction,
-          expandedFunctionIds: [...this.expandedFunctionIds]
+          expandedNodeIds: [...this.expandedNodeIds],
+          entireFile: this.entireFile
         });
         const rootNode = model.rootFunctionId
           ? model.nodes.find((node) => node.id === model.rootFunctionId)
