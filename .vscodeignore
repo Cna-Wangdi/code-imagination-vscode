@@ -8,6 +8,7 @@ scripts/**
 node_modules/**
 esbuild.mjs
 esbuild.test.mjs
+esbuild.integration.mjs
 tsconfig.json
 pnpm-lock.yaml
 pnpm-workspace.yaml

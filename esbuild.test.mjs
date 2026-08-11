@@ -5,6 +5,7 @@ await mkdir('.test-dist', { recursive: true });
 await esbuild.build({
   entryPoints: {
     analyzer: 'src/analyzer.ts',
+    analysisMode: 'src/analysisMode.ts',
     graphLayout: 'src/webview/graphLayout.ts',
     graphHighlight: 'src/webview/graphHighlight.ts'
   },

@@ -2,13 +2,15 @@
 
 Code Imagination is an experimental VS Code extension that turns the function under your cursor into a live visual mental model.
 
-> Preview release: the extension currently focuses on React projects written in JavaScript or TypeScript.
+> Preview release: the extension supports React and Angular workflows in JavaScript and TypeScript.
 
-The MVP recognizes named and inline JSX event handlers, React `useState` and `useReducer`, true/false branches, branch joins, early returns, ordered call sites, setter and dispatch calls, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, on-demand project-wide function usages, and the resulting UI re-render in JavaScript and TypeScript files.
+The MVP recognizes standalone functions and ordinary class methods across JavaScript and TypeScript, named and inline JSX event handlers, React `useState` and `useReducer`, Angular `@Component` methods, inline-template events, signals and `.set()` / `.update()`, true/false branches, branch joins, early returns, ordered call sites, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, on-demand project-wide function usages, and resulting UI updates.
+
+Angular analysis also covers external templates, inputs and outputs, lifecycle and post-render hooks, host listeners/bindings, view queries, reactive forms, two-way bindings, modern template conditions and loops, custom component bindings, async and custom pipes, content projection, constructor and `inject()` dependencies, provider metadata, Router guards/navigation/resolvers, expandable typed `HttpClient` requests, common RxJS pipeline operators, NgRx primitives, modern signal resources, SSR hydration intent, directives, and pipes. Template elements and attributes use a source-location-aware HTML parser; Angular block syntax is scanned separately. These relationships are inferred statically and remain collapsed where detail could make the graph noisy.
 
 Moving the source cursor highlights the smallest matching diagram node and animates only its connected edges without disrupting the graph layout. When the cursor leaves a function, the last focused function remains visible instead of expanding the whole file.
 
-Dependency-aware automatic layout arranges event, function, condition, request, async, state, and render nodes from left to right. Branches are separated and visibly rejoin before subsequent statements. Called helpers and HTTP request details remain collapsed until their **Expand details** control is selected.
+Dependency-aware automatic layout arranges event, function, condition, request, async, state, and render nodes from left to right. Branches are separated and visibly rejoin before subsequent statements. Called helpers and HTTP request details remain collapsed until their **Expand details** control is selected. Live cursor updates use fast syntax analysis; resolving an imported call or searching project-wide usages loads type information on demand.
 
 The extension caches and incrementally rebuilds its TypeScript project model. Cursor-only movement reuses the existing program, while unsaved document edits, source-file changes, and `tsconfig.json` updates invalidate the relevant analysis safely.
 
@@ -27,18 +29,23 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
 ## Current limitations
 
 - Static analysis cannot always resolve dynamic calls or runtime-generated state.
+- Runtime-created templates, dynamically selected providers, server-only branches, and values known only after dependency injection cannot be guaranteed by static analysis.
 - Request configuration shows source expressions; values computed only at runtime cannot be predicted.
 - Class-based React state is not supported yet.
 - Very large monorepos still need broader performance testing.
 
 ## Roadmap / TODO
 
-- [ ] Add Angular support:
-  - recognize `@Component` class methods and component properties;
-  - connect inline and external templates to their component TypeScript files;
-  - visualize template events such as `(click)="increment()"`;
-  - understand Angular signals and `.set()` / `.update()` state changes;
-  - show Angular change detection and the resulting UI update.
+- [x] Add Angular support:
+  - [x] recognize `@Component` class methods and signal properties;
+  - [x] connect inline templates to their component TypeScript files;
+  - [x] connect external HTML templates to their component TypeScript files;
+  - [x] visualize template events such as `(click)="increment()"`;
+  - [x] understand Angular signals and `.set()` / `.update()` state changes;
+  - [x] show Angular change detection and the resulting UI update.
+  - [x] model inputs, outputs, `EventEmitter`, `computed()`, `effect()`, injected services, and RxJS subscriptions.
+  - [x] model lifecycle hooks, view queries, reactive forms, two-way binding, Router navigation, `HttpClient`, common RxJS operators, `*ngIf` / `*ngFor`, and `@if` / `@for`.
+  - [x] model host APIs, custom component bindings, async/custom pipes, content projection, NgRx, guards/resolvers, modern resources, providers, and hydration intent.
 - [x] Add an on-demand **Used by** view for JavaScript and TypeScript functions:
   - find call sites across the current project;
   - show each usage with its file and line number;
@@ -64,6 +71,8 @@ The visualization updates automatically while you type. Click a visual node to r
 
 ## Verify and package
 
-- Run `pnpm test` for analyzer tests.
-- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.1.0.vsix`.
+- Run `pnpm test` for analyzer and graph unit tests.
+- Run `pnpm run test:integration` to launch a clean VS Code Extension Host and verify activation, Angular analysis, and cross-file source highlighting.
+- Run `pnpm run test:all` for type-checking plus both test layers.
+- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.2.0.vsix`.
 - Install the VSIX from **Extensions: Install from VSIX...** in the VS Code Command Palette.

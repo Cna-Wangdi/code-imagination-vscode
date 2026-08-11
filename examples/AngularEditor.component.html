@@ -1,0 +1,13 @@
+<section>
+  <input #nameField [(ngModel)]="name">
+  <button (click)="save()">Save</button>
+  <button (click)="goHome()">Home</button>
+
+  @if (visible) {
+    <p>The editor is visible.</p>
+  }
+
+  @for (item of items; track item) {
+    <span>{{ item }}</span>
+  }
+</section>

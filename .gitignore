@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.vsix
 .vscode-test/
+.vscode-test-user-data/
 .test-dist/
 extension-concept.gif
 make_extension_concept_gif.py
