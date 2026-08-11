@@ -2,7 +2,14 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import ts from 'typescript';
 import { analyzeCode } from './analyzer';
+import { getAnalysisScope } from './analysisMode';
 import type { SourceLocation, VisualModel, VisualizerSettings } from './model';
+
+export interface CodeImaginationExtensionApi {
+  refresh(): Promise<void>;
+  getModel(): VisualModel | undefined;
+  reveal(location: SourceLocation): Promise<void>;
+}
 
 interface DocumentSnapshot {
   fileName: string;
@@ -45,20 +52,25 @@ class TypeScriptProjectCache {
     if (clearConfigurations) this.configurations.clear();
   }
 
-  getProgram(document: vscode.TextDocument): ts.Program {
+  getProgram(document: vscode.TextDocument, scope: 'imports' | 'project'): ts.Program {
     this.updateDocument(document);
     const activeFile = path.normalize(document.fileName);
     const configuration = this.getConfiguration(activeFile);
+    const buildKey = scope === 'project'
+      ? `${configuration.key}:project`
+      : `${configuration.key}:imports:${normalizeFileName(activeFile)}`;
     const existingSource = this.program?.getSourceFiles()
       .some((source) => normalizeFileName(source.fileName) === normalizeFileName(activeFile));
 
-    if (!this.dirty && this.program && this.programKey === configuration.key && existingSource) {
+    if (!this.dirty && this.program && this.programKey === buildKey && existingSource) {
       return this.program;
     }
 
-    const rootNames = configuration.rootNames.some((file) => normalizeFileName(file) === normalizeFileName(activeFile))
-      ? configuration.rootNames
-      : [...configuration.rootNames, activeFile];
+    const rootNames = scope === 'project'
+      ? configuration.rootNames.some((file) => normalizeFileName(file) === normalizeFileName(activeFile))
+        ? configuration.rootNames
+        : [...configuration.rootNames, activeFile]
+      : [activeFile];
     const host = ts.createCompilerHost(configuration.options, true);
     const originalGetSourceFile = host.getSourceFile.bind(host);
     host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
@@ -79,31 +91,45 @@ class TypeScriptProjectCache {
       rootNames,
       options: configuration.options,
       host,
-      oldProgram: this.programKey === configuration.key ? this.program : undefined
+      oldProgram: this.programKey === buildKey ? this.program : undefined
     });
-    this.programKey = configuration.key;
+    this.programKey = buildKey;
     this.dirty = false;
     return this.program;
   }
 
   private getConfiguration(activeFile: string): ProjectConfiguration {
     const configPath = ts.findConfigFile(path.dirname(activeFile), ts.sys.fileExists, 'tsconfig.json');
-    const key = configPath ? normalizeFileName(configPath) : `implicit:${normalizeFileName(path.dirname(activeFile))}`;
+    if (!configPath) {
+      const key = `implicit:${normalizeFileName(path.dirname(activeFile))}`;
+      return { key, rootNames: [activeFile], options: defaultCompilerOptions() };
+    }
+
+    const primary = this.readConfiguration(configPath, activeFile);
+    if (primary.rootNames.some((file) => normalizeFileName(file) === normalizeFileName(activeFile))) return primary;
+
+    const candidates = ts.sys.readDirectory(path.dirname(configPath), ['.json'], undefined, ['tsconfig*.json'], 1)
+      .filter((candidate) => normalizeFileName(candidate) !== normalizeFileName(configPath));
+    for (const candidate of candidates) {
+      const configuration = this.readConfiguration(candidate, activeFile);
+      if (configuration.rootNames.some((file) => normalizeFileName(file) === normalizeFileName(activeFile))) {
+        return configuration;
+      }
+    }
+    return primary;
+  }
+
+  private readConfiguration(configPath: string, activeFile: string): ProjectConfiguration {
+    const key = normalizeFileName(configPath);
     const cached = this.configurations.get(key);
     if (cached) return cached;
-
-    let configuration: ProjectConfiguration;
-    if (configPath) {
-      const config = ts.readConfigFile(configPath, ts.sys.readFile);
-      if (!config.error) {
+    const config = ts.readConfigFile(configPath, ts.sys.readFile);
+    const configuration = !config.error
+      ? (() => {
         const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath));
-        configuration = { key, rootNames: parsed.fileNames, options: parsed.options };
-      } else {
-        configuration = { key, rootNames: [activeFile], options: defaultCompilerOptions() };
-      }
-    } else {
-      configuration = { key, rootNames: [activeFile], options: defaultCompilerOptions() };
-    }
+        return { key, rootNames: parsed.fileNames, options: parsed.options };
+      })()
+      : { key, rootNames: [activeFile], options: defaultCompilerOptions() };
     this.configurations.set(key, configuration);
     return configuration;
   }
@@ -118,6 +144,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   private analysisSequence = 0;
   private focusedFunction?: { fileName: string; name: string; start: number };
   private expandedFileName?: string;
+  private lastAnalyzedFileName?: string;
   private entireFile = false;
   private readonly expandedNodeIds = new Set<string>();
   private readonly expandedUsages = new Map<string, string>();
@@ -141,7 +168,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
         this.sendSettings();
         void this.updateNow();
       }
-      if (message.type === 'reveal' && message.location) this.reveal(message.location as SourceLocation);
+      if (message.type === 'reveal' && message.location) void this.revealLocation(message.location as SourceLocation);
       if (message.type === 'toggleExpand' && typeof message.nodeId === 'string') {
         if (this.expandedNodeIds.has(message.nodeId)) this.expandedNodeIds.delete(message.nodeId);
         else this.expandedNodeIds.add(message.nodeId);
@@ -201,28 +228,49 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     if (sequence !== this.analysisSequence || !this.view) return;
 
     const startedAt = performance.now();
-    const editor = vscode.window.activeTextEditor;
+    const activeEditor = vscode.window.activeTextEditor;
+    let analysisDocument = activeEditor && isSupportedDocument(activeEditor.document)
+      ? activeEditor.document
+      : this.focusedFunction
+        ? vscode.workspace.textDocuments.find((document) =>
+          isSupportedDocument(document) && normalizeFileName(document.fileName) === this.focusedFunction?.fileName)
+        : undefined;
+    if (!analysisDocument && this.lastAnalyzedFileName) {
+      try {
+        analysisDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(this.lastAnalyzedFileName));
+      } catch {
+        analysisDocument = undefined;
+      }
+    }
     try {
       let model: VisualModel;
-      if (!editor || !isSupportedDocument(editor.document)) {
+      if (!analysisDocument) {
         model = { fileName: '', languageId: '', nodes: [], edges: [], message: 'Open a JavaScript, TypeScript, JSX, or TSX file to begin.' };
       } else {
-        const text = editor.document.getText();
-        const cursorOffset = editor.document.offsetAt(editor.selection.active);
-        const normalizedFileName = normalizeFileName(editor.document.fileName);
+        const text = analysisDocument.getText();
+        const cursorOffset = activeEditor?.document === analysisDocument
+          ? analysisDocument.offsetAt(activeEditor.selection.active)
+          : this.focusedFunction?.start ?? 0;
+        const normalizedFileName = normalizeFileName(analysisDocument.fileName);
+        this.lastAnalyzedFileName = analysisDocument.fileName;
         if (this.expandedFileName !== normalizedFileName) {
           this.expandedFileName = normalizedFileName;
           this.expandedNodeIds.clear();
           this.expandedUsages.clear();
         }
-        const program = this.projectCache.getProgram(editor.document);
+        const analysisScope = getAnalysisScope(this.expandedNodeIds, this.expandedUsages.size);
+        const program = analysisScope === 'syntax'
+          ? undefined
+          : this.projectCache.getProgram(analysisDocument, analysisScope);
+        const externalTemplates = await this.loadExternalTemplates(text, analysisDocument.fileName);
         const preferredFunction = this.focusedFunction?.fileName === normalizedFileName
           ? { name: this.focusedFunction.name, start: this.focusedFunction.start }
           : undefined;
-        model = analyzeCode(text, editor.document.fileName, editor.document.languageId, cursorOffset, program, {
+        model = analyzeCode(text, analysisDocument.fileName, analysisDocument.languageId, cursorOffset, program, {
           preferredFunction,
           expandedNodeIds: [...this.expandedNodeIds],
           expandedUsages: [...this.expandedUsages].map(([targetId, sourceId]) => ({ targetId, sourceId })),
+          externalTemplates,
           entireFile: this.entireFile
         });
         const rootNode = model.rootFunctionId
@@ -243,11 +291,11 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
-      this.output.appendLine(`[error] Analysis failed for ${editor?.document.fileName ?? 'unknown file'}: ${message}`);
+      this.output.appendLine(`[error] Analysis failed for ${analysisDocument?.fileName ?? 'unknown file'}: ${message}`);
       if (stack) this.output.appendLine(stack);
       const model: VisualModel = {
-        fileName: editor ? path.basename(editor.document.fileName) : '',
-        languageId: editor?.document.languageId ?? '',
+        fileName: analysisDocument ? path.basename(analysisDocument.fileName) : '',
+        languageId: analysisDocument?.languageId ?? '',
         nodes: [],
         edges: [],
         message: 'Analysis failed. Run “Code Imagination: Show Diagnostic Logs” for details.'
@@ -261,6 +309,10 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  getModel(): VisualModel | undefined {
+    return this.lastModel;
+  }
+
   sendSettings(): void {
     const configuration = vscode.workspace.getConfiguration('codeImagination');
     const settings: VisualizerSettings = {
@@ -270,7 +322,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: 'settings', settings });
   }
 
-  private async reveal(location: SourceLocation): Promise<void> {
+  async revealLocation(location: SourceLocation): Promise<void> {
     const currentEditor = vscode.window.activeTextEditor;
     const targetUri = vscode.Uri.file(location.fileName);
 
@@ -300,6 +352,28 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
     editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
   }
 
+  private async loadExternalTemplates(text: string, componentFile: string): Promise<Array<{ fileName: string; text: string }>> {
+    const templates: Array<{ fileName: string; text: string }> = [];
+    const pattern = /templateUrl\s*:\s*["']([^"']+)["']/g;
+    for (const match of text.matchAll(pattern)) {
+      const relativePath = match[1];
+      if (!relativePath) continue;
+      const fileName = path.resolve(path.dirname(componentFile), relativePath);
+      try {
+        const openDocument = vscode.workspace.textDocuments.find((document) => normalizeFileName(document.fileName) === normalizeFileName(fileName));
+        if (openDocument) {
+          templates.push({ fileName, text: openDocument.getText() });
+          continue;
+        }
+        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(fileName));
+        templates.push({ fileName, text: new TextDecoder().decode(bytes) });
+      } catch (error) {
+        this.output.appendLine(`[angular] Unable to read template ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return templates;
+  }
+
   private html(webview: vscode.Webview): string {
     const script = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
     const style = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
@@ -315,7 +389,7 @@ class VisualizerProvider implements vscode.WebviewViewProvider {
   }
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext): CodeImaginationExtensionApi {
   const sourceHighlight = vscode.window.createTextEditorDecorationType({
     backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
     borderColor: new vscode.ThemeColor('editor.findMatchBorder'),
@@ -331,6 +405,7 @@ export function activate(context: vscode.ExtensionContext): void {
   output.appendLine('[info] Code Imagination activated');
   const provider = new VisualizerProvider(context.extensionUri, sourceHighlight, projectCache, output);
   const sourceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{ts,tsx,js,jsx}');
+  const templateWatcher = vscode.workspace.createFileSystemWatcher('**/*.html');
   const configWatcher = vscode.workspace.createFileSystemWatcher('**/tsconfig.json');
   const refreshFromDisk = () => {
     projectCache.invalidate();
@@ -344,17 +419,21 @@ export function activate(context: vscode.ExtensionContext): void {
     sourceHighlight,
     output,
     sourceWatcher,
+    templateWatcher,
     configWatcher,
     sourceWatcher.onDidCreate(refreshFromDisk),
     sourceWatcher.onDidChange(refreshFromDisk),
     sourceWatcher.onDidDelete(refreshFromDisk),
+    templateWatcher.onDidCreate(() => provider.scheduleUpdate()),
+    templateWatcher.onDidChange(() => provider.scheduleUpdate()),
+    templateWatcher.onDidDelete(() => provider.scheduleUpdate()),
     configWatcher.onDidCreate(refreshConfiguration),
     configWatcher.onDidChange(refreshConfiguration),
     configWatcher.onDidDelete(refreshConfiguration),
     vscode.window.registerWebviewViewProvider('codeImagination.visualizer', provider),
     vscode.workspace.onDidChangeTextDocument((event) => {
       projectCache.updateDocument(event.document);
-      if (isSupportedDocument(event.document)) provider.scheduleUpdate();
+      if (isSupportedDocument(event.document) || event.document.languageId === 'html') provider.scheduleUpdate();
     }),
     vscode.workspace.onDidCloseTextDocument((document) => projectCache.forgetDocument(document)),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -369,6 +448,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('codeImagination.openBeside', () => vscode.commands.executeCommand('codeImagination.visualizer.focus')),
     vscode.commands.registerCommand('codeImagination.showLogs', () => output.show(true))
   );
+  return {
+    refresh: () => provider.updateNow(),
+    getModel: () => provider.getModel(),
+    reveal: (location) => provider.revealLocation(location)
+  };
 }
 
 export function deactivate(): void {}

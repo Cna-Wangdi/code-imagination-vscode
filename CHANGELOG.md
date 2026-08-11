@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.2.0 — Private Angular preview
+
+- Recognize Angular `@Component` methods and both inline and external template events.
+- Model signal inputs and state, `.set()`, `.update()`, `computed()`, and `effect()` dependencies.
+- Show component outputs through `EventEmitter` and the `output()` API.
+- Visualize injected-service calls, RxJS pipelines, subscriptions, and next/error callbacks.
+- Refresh external-template graphs from saved and unsaved HTML changes with cross-file navigation.
+- Add constructor injection, lifecycle hooks, view queries, reactive forms, and two-way bindings.
+- Show Router navigation, expandable `HttpClient` requests, common RxJS operators, and Angular template conditions and loops.
+- Focus and expand ordinary JavaScript and TypeScript class methods with owner-aware `this.method()` resolution.
+- Add source-location-aware HTML parsing for Angular events, inputs, two-way bindings, projection, and hydration attributes.
+- Model host bindings/listeners, directives, custom pipes, custom component events, async-pipe consumption, route guards/resolvers, and inherited methods.
+- Add NgRx selectors/reducers/effects/store operations, `linkedSignal`, `resource`, `rxResource`, provider metadata, and client render/hydration hooks.
+- Show typed `HttpClient` responses and `HttpErrorResponse` flow, with a generated large-component performance regression test.
+- Split reusable TypeScript AST, Angular metadata, and Angular template parsing helpers into focused analyzer modules.
+- Add a VS Code Extension Host integration test for activation, focused Angular analysis, and cross-file HTML highlighting.
+- Keep live cursor analysis syntax-only for responsive large-project updates, while resolving imported calls and project-wide usages on demand.
+- Render function calls nested inside branch and loop conditions, and model both paths of ternary expressions.
+
 ## 0.1.1 — Private test
 
 - Keep the last function focused when the cursor moves outside a function.

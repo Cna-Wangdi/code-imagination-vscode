@@ -1,8 +1,8 @@
 {
   "name": "code-imagination",
   "displayName": "Code Imagination",
-  "description": "Visualize functions, React state updates, and UI effects as you type.",
-  "version": "0.1.1",
+  "description": "Visualize functions, React and Angular state updates, and UI effects as you type.",
+  "version": "0.2.0",
   "publisher": "code-imagination",
   "license": "MIT",
   "preview": true,
@@ -15,7 +15,15 @@
   "bugs": {
     "url": "https://github.com/Cna-Wangdi/code-imagination-vscode/issues"
   },
-  "keywords": ["visualization", "react", "typescript", "state", "flowchart"],
+  "keywords": [
+    "visualization",
+    "react",
+    "angular",
+    "rxjs",
+    "typescript",
+    "state",
+    "flowchart"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true
@@ -38,7 +46,9 @@
     "watch": "node esbuild.mjs --watch",
     "check": "tsc --noEmit",
     "test": "node esbuild.test.mjs && node --test tests/*.test.mjs",
-    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies -o code-imagination-0.1.1.vsix",
+    "test:integration": "pnpm run build && node esbuild.integration.mjs && node scripts/run-vscode-tests.mjs",
+    "test:all": "pnpm run check && pnpm run test && pnpm run test:integration",
+    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies -o code-imagination-0.2.0.vsix",
     "vscode:prepublish": "npm run check && npm run build"
   },
   "contributes": {
@@ -122,12 +132,14 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.95.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.0"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
     "@xyflow/react": "^12.10.0",
+    "parse5": "7.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0"
