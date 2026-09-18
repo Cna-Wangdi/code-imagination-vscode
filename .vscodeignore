@@ -6,6 +6,7 @@ tests/**
 examples/**
 scripts/**
 node_modules/**
+.pnpm-store/**
 esbuild.mjs
 esbuild.test.mjs
 esbuild.integration.mjs

@@ -74,29 +74,6 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
 - Class-based React state is not supported yet.
 - Very large monorepos still need broader performance testing.
 
-## Roadmap / TODO
-
-- [x] Add Angular support:
-  - [x] recognize `@Component` class methods and signal properties;
-  - [x] connect inline templates to their component TypeScript files;
-  - [x] connect external HTML templates to their component TypeScript files;
-  - [x] visualize template events such as `(click)="increment()"`;
-  - [x] understand Angular signals and `.set()` / `.update()` state changes;
-  - [x] show Angular change detection and the resulting UI update.
-  - [x] model inputs, outputs, `EventEmitter`, `computed()`, `effect()`, injected services, and RxJS subscriptions.
-  - [x] model lifecycle hooks, view queries, reactive forms, two-way binding, Router navigation, `HttpClient`, common RxJS operators, `*ngIf` / `*ngFor`, and `@if` / `@for`.
-  - [x] model host APIs, custom component bindings, async/custom pipes, content projection, NgRx, guards/resolvers, modern resources, providers, and hydration intent.
-- [x] Add an on-demand **Used by** view for JavaScript and TypeScript functions:
-  - find call sites across the current project;
-  - show each usage with its file and line number;
-  - open and highlight the selected usage without replacing the current graph;
-  - keep usage nodes collapsed until requested so large projects stay readable.
-- [ ] Add pluggable language support beyond JavaScript and TypeScript:
-  - use VS Code symbol, reference, and call-hierarchy providers for a generic function graph;
-  - support function definitions, calls, conditions, async work, and **Used by** references where the installed language tooling provides them;
-  - add dedicated analyzers for Python, C#, Java, Go, and Rust incrementally;
-  - keep framework-specific state and UI behavior in separate adapters instead of applying React concepts to every language.
-
 If analysis fails, run **Code Imagination: Show Diagnostic Logs** from the Command Palette. Error details are written to the local Code Imagination output channel without including full source contents.
 
 ## Feedback and support
@@ -120,5 +97,5 @@ The visualization updates automatically while you type. Click a visual node to r
 - Run `pnpm test` for analyzer and graph unit tests.
 - Run `pnpm run test:integration` to launch a clean VS Code Extension Host and verify activation, Angular analysis, and cross-file source highlighting.
 - Run `pnpm run test:all` for type-checking plus both test layers.
-- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.2.1.vsix`.
+- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.2.2.vsix`.
 - Install the VSIX from **Extensions: Install from VSIX...** in the VS Code Command Palette.

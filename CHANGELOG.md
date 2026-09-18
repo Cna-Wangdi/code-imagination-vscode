@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.2 — Marketplace overview cleanup
+
+- Remove the development roadmap from the Marketplace overview to keep the page focused on current capabilities.
+
 ## 0.2.1 — Marketplace presentation update
 
 - Add a clear quick start and grouped React, Angular, and TypeScript capabilities.
