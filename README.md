@@ -4,15 +4,55 @@ Code Imagination is an experimental VS Code extension that turns the function un
 
 > Preview release: the extension supports React and Angular workflows in JavaScript and TypeScript.
 
-The MVP recognizes standalone functions and ordinary class methods across JavaScript and TypeScript, named and inline JSX event handlers, React `useState` and `useReducer`, Angular `@Component` methods, inline-template events, signals and `.set()` / `.update()`, true/false branches, branch joins, early returns, ordered call sites, handled and propagated asynchronous errors, imported local functions, expandable `fetch` request configuration, on-demand project-wide function usages, and resulting UI updates.
+![Code Imagination showing React source code beside its live state-flow graph](media/code-imagination-preview.png)
 
-Angular analysis also covers external templates, inputs and outputs, lifecycle and post-render hooks, host listeners/bindings, view queries, reactive forms, two-way bindings, modern template conditions and loops, custom component bindings, async and custom pipes, content projection, constructor and `inject()` dependencies, provider metadata, Router guards/navigation/resolvers, expandable typed `HttpClient` requests, common RxJS pipeline operators, NgRx primitives, modern signal resources, SSR hydration intent, directives, and pipes. Template elements and attributes use a source-location-aware HTML parser; Angular block syntax is scanned separately. These relationships are inferred statically and remain collapsed where detail could make the graph noisy.
+## Install
 
-Moving the source cursor highlights the smallest matching diagram node and animates only its connected edges without disrupting the graph layout. When the cursor leaves a function, the last focused function remains visible instead of expanding the whole file.
+Select **Install** on this Marketplace page, or search for `Code Imagination` in the VS Code Extensions view.
 
-Dependency-aware automatic layout arranges event, function, condition, request, async, state, and render nodes from left to right. Branches are separated and visibly rejoin before subsequent statements. Called helpers and HTTP request details remain collapsed until their **Expand details** control is selected. Live cursor updates use fast syntax analysis; resolving an imported call or searching project-wide usages loads type information on demand.
+## Quick start
 
-The extension caches and incrementally rebuilds its TypeScript project model. Cursor-only movement reuses the existing program, while unsaved document edits, source-file changes, and `tsconfig.json` updates invalidate the relevant analysis safely.
+1. Open a JavaScript, TypeScript, JSX, or TSX file.
+2. Place the cursor inside a function or class method.
+3. Select **Code Imagination** in the Activity Bar.
+
+The graph updates as you type. Click a node to open and highlight its source code, including definitions in other files.
+
+## What it understands
+
+### JavaScript and TypeScript
+
+- Standalone functions, arrow functions, and class methods
+- Conditions, loops, early returns, and visible branch joins
+- Ordered local and imported function calls
+- Awaited operations and handled, rethrown, or propagated errors
+- Expandable `fetch` request method, URL, headers, body fields, and abort signals
+- On-demand project-wide **Show usages** results
+
+### React
+
+- Named and inline JSX event handlers
+- `useState`, `useReducer`, setter calls, and dispatched actions
+- State-to-render relationships and resulting UI updates
+
+### Angular
+
+- `@Component` methods plus inline and external template events
+- Signals, inputs, outputs, `computed()`, `effect()`, `.set()`, and `.update()`
+- Lifecycle and post-render hooks, host APIs, view queries, forms, and two-way bindings
+- Router navigation, guards, resolvers, providers, and injected dependencies
+- Typed `HttpClient` requests, RxJS pipelines, NgRx primitives, and signal resources
+- Template conditions, loops, bindings, pipes, directives, projection, and hydration intent
+
+## Explore without losing context
+
+- Move the source cursor to highlight the smallest matching node and its connected edges.
+- Leave a function and the last focused mental model stays visible.
+- Expand helper functions and request details only when you need them.
+- Select **Show entire file** for the complete file graph.
+- Select **Fit graph** to bring every node into view.
+
+Dependency-aware layout keeps events, functions, conditions, requests, state, and rendering ordered from left to right. Live cursor updates use fast syntax analysis; imported-call resolution and project-wide usage searches load type information only when needed.
 
 ## Settings
 
@@ -58,6 +98,12 @@ All source analysis runs locally in the VS Code extension host. Code Imagination
   - keep framework-specific state and UI behavior in separate adapters instead of applying React concepts to every language.
 
 If analysis fails, run **Code Imagination: Show Diagnostic Logs** from the Command Palette. Error details are written to the local Code Imagination output channel without including full source contents.
+
+## Feedback and support
+
+- [Report a bug or request a feature](https://github.com/Cna-Wangdi/code-imagination-vscode/issues)
+- Read [SUPPORT.md](SUPPORT.md) for diagnostic and reporting guidance.
+- View the [source code](https://github.com/Cna-Wangdi/code-imagination-vscode).
 
 ## Run locally
 

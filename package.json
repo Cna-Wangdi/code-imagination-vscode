@@ -6,7 +6,12 @@
   "publisher": "code-imagination",
   "license": "MIT",
   "preview": true,
+  "pricing": "Free",
   "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#181818",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Cna-Wangdi/code-imagination-vscode.git"
@@ -133,7 +138,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.95.0",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.24.0"
   },
   "dependencies": {

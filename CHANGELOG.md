@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.2.0 — Private Angular preview
+## 0.2.0 — Public preview
 
 - Recognize Angular `@Component` methods and both inline and external template events.
 - Model signal inputs and state, `.set()`, `.update()`, `computed()`, and `effect()` dependencies.
