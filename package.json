@@ -2,7 +2,7 @@
   "name": "code-imagination",
   "displayName": "Code Imagination",
   "description": "Visualize functions, React and Angular state updates, and UI effects as you type.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "code-imagination",
   "license": "MIT",
   "preview": true,
@@ -53,7 +53,7 @@
     "test": "node esbuild.test.mjs && node --test tests/*.test.mjs",
     "test:integration": "pnpm run build && node esbuild.integration.mjs && node scripts/run-vscode-tests.mjs",
     "test:all": "pnpm run check && pnpm run test && pnpm run test:integration",
-    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies -o code-imagination-0.2.0.vsix",
+    "package:vsix": "pnpm run check && pnpm run test && pnpm run build && vsce package --no-dependencies -o code-imagination-0.2.1.vsix",
     "vscode:prepublish": "npm run check && npm run build"
   },
   "contributes": {

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.1 — Marketplace presentation update
+
+- Add a clear quick start and grouped React, Angular, and TypeScript capabilities.
+- Add a code-and-graph preview image to the Marketplace overview.
+- Add support and diagnostic-reporting guidance.
+- Declare free pricing and a dark Marketplace banner.
+
 ## 0.2.0 — Public preview
 
 - Recognize Angular `@Component` methods and both inline and external template events.

@@ -120,5 +120,5 @@ The visualization updates automatically while you type. Click a visual node to r
 - Run `pnpm test` for analyzer and graph unit tests.
 - Run `pnpm run test:integration` to launch a clean VS Code Extension Host and verify activation, Angular analysis, and cross-file source highlighting.
 - Run `pnpm run test:all` for type-checking plus both test layers.
-- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.2.0.vsix`.
+- Run `pnpm run package:vsix` to produce an installable `code-imagination-0.2.1.vsix`.
 - Install the VSIX from **Extensions: Install from VSIX...** in the VS Code Command Palette.
